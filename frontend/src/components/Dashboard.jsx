@@ -331,7 +331,7 @@ export default function Dashboard({
                     outerRadius={80}
                     paddingAngle={3}
                   >
-                    {summary.categoryBreakdown.map((entry, index) => (
+                    {summary?.categoryBreakdown && summary.categoryBreakdown.map((entry, index) => (
                       <Cell 
                         key={`cell-${index}`} 
                         fill={entry.color || PRESET_COLORS[index % PRESET_COLORS.length]} 
