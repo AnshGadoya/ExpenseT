@@ -10,5 +10,11 @@
   "workspaces": [
     "backend",
     "frontend"
-  ]
+  ],
+  "optionalDependencies": {
+    "@rolldown/binding-linux-x64-gnu": "^1.2.6",
+    "@rolldown/binding-wasm32-wasi": "^1.2.6"
+  }
 }
+
+
