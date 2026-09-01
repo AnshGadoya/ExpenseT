@@ -8,6 +8,8 @@
     "dev": "node index.js"
   },
   "dependencies": {
+    "@libsql/client": "^0.17.4",
+    "@libsql/sqlite3": "^0.3.1",
     "better-sqlite3": "^11.8.1",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",

@@ -1,4 +1,5 @@
-import Database from 'better-sqlite3';
+import BetterSqlite from 'better-sqlite3';
+import LibSqlite from '@libsql/sqlite3';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -6,10 +7,23 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const dbPath = path.join(__dirname, 'database.sqlite');
 
+const tursoUrl = process.env.TURSO_DATABASE_URL;
+const tursoToken = process.env.TURSO_AUTH_TOKEN;
 
-const db = new Database(dbPath);
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
+let db;
+if (tursoUrl) {
+  db = new LibSqlite(tursoUrl, { authToken: tursoToken });
+} else {
+  db = new BetterSqlite(dbPath);
+}
+
+try {
+  db.pragma('journal_mode = WAL');
+  db.pragma('foreign_keys = ON');
+} catch (e) {
+  // Ignore pragma unsupported on remote connection
+}
+
 
 // Initialize database schema
 export function initDB() {
