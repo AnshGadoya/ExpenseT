@@ -61,9 +61,10 @@ export default function ExpensesView({
       if (endDate) params.end_date = endDate;
 
       const data = await api.getExpenses(params);
-      setExpenses(data);
+      setExpenses(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error('Failed to load expenses:', err);
+      setExpenses([]);
     } finally {
       setLoading(false);
     }
@@ -75,8 +76,9 @@ export default function ExpensesView({
 
   const handleOpenAdd = () => {
     setEditingExpense(null);
+    const validCats = Array.isArray(categories) ? categories : [];
     setFormData({
-      category_id: categories.length > 0 ? categories[0].id : '',
+      category_id: validCats.length > 0 ? validCats[0].id : '',
       amount: '',
       expense_date: getTodayDateString(),
       payment_mode: 'GPay',
@@ -259,7 +261,7 @@ export default function ExpensesView({
               className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs sm:text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:border-rose-500 focus:bg-white dark:focus:bg-slate-900 font-medium"
             >
               <option value="">All Categories</option>
-              {categories.map((c) => (
+              {(Array.isArray(categories) ? categories : []).map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
                 </option>
@@ -319,7 +321,7 @@ export default function ExpensesView({
                     Loading expenses...
                   </td>
                 </tr>
-              ) : expenses.length === 0 ? (
+              ) : (!Array.isArray(expenses) || expenses.length === 0) ? (
                 <tr>
                   <td colSpan="7" className="py-12 text-center text-slate-400 dark:text-slate-500 font-medium">
                     No expense records found matching your filters.

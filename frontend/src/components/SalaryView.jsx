@@ -122,15 +122,17 @@ export default function SalaryView({ darkMode }) {
     setLoading(true);
     try {
       const [matrixRes, empRes, salRes] = await Promise.all([
-        api.getSalaryMatrix(),
-        api.getEmployees(),
-        api.getSalaries()
+        api.getSalaryMatrix().catch(() => ({ months: DEFAULT_MONTHS, matrix: [] })),
+        api.getEmployees().catch(() => []),
+        api.getSalaries().catch(() => [])
       ]);
-      setMatrixData(matrixRes);
-      setEmployees(empRes);
-      setSalaries(salRes);
+      setMatrixData(matrixRes && Array.isArray(matrixRes.matrix) ? matrixRes : { months: DEFAULT_MONTHS, matrix: [] });
+      setEmployees(Array.isArray(empRes) ? empRes : []);
+      setSalaries(Array.isArray(salRes) ? salRes : []);
     } catch (err) {
       console.error('Failed to load salary data:', err);
+      setEmployees([]);
+      setSalaries([]);
     } finally {
       setLoading(false);
     }

@@ -128,14 +128,16 @@ export default function DealsView({
       if (statusFilter !== 'all') params.status = statusFilter;
 
       const data = await api.getDeals(params);
-      setDeals(data);
+      const validDeals = Array.isArray(data) ? data : [];
+      setDeals(validDeals);
 
       if (paymentLedgerDeal) {
-        const refreshed = data.find(d => d.id === paymentLedgerDeal.id);
+        const refreshed = validDeals.find(d => d.id === paymentLedgerDeal.id);
         if (refreshed) setPaymentLedgerDeal(refreshed);
       }
     } catch (err) {
       console.error('Failed to load client deals:', err);
+      setDeals([]);
     } finally {
       setLoading(false);
     }

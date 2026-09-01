@@ -67,7 +67,7 @@ export default function ReportsView({ darkMode }) {
   };
 
   const expandAllCategories = () => {
-    if (summary?.categoryBreakdown) {
+    if (Array.isArray(summary?.categoryBreakdown)) {
       const allExpanded = {};
       summary.categoryBreakdown.forEach(c => {
         allExpanded[c.id] = true;
@@ -95,9 +95,10 @@ export default function ReportsView({ darkMode }) {
     });
   };
 
+  const validExpenses = Array.isArray(expenses) ? expenses : [];
   const filteredExpensesList = activeCategoryFilter === 'all' 
-    ? expenses 
-    : expenses.filter(e => String(e.category_id) === String(activeCategoryFilter) || e.category_name === activeCategoryFilter);
+    ? validExpenses 
+    : validExpenses.filter(e => String(e.category_id) === String(activeCategoryFilter) || e.category_name === activeCategoryFilter);
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 print:p-0 print:m-0">
