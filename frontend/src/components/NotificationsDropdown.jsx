@@ -65,6 +65,8 @@ export default function NotificationsDropdown({
     const notifs = [];
     const now = new Date();
 
+    if (!Array.isArray(deals)) return notifs;
+
     deals.forEach((deal) => {
       if (!deal.deal_date) return;
       const startDate = new Date(deal.deal_date);

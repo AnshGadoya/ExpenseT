@@ -48,13 +48,13 @@ export default function App() {
   const loadInitialData = async () => {
     try {
       const [servicesData, categoriesData, dealsData] = await Promise.all([
-        api.getServices(),
-        api.getCategories(),
-        api.getDeals(),
+        api.getServices().catch(() => []),
+        api.getCategories().catch(() => []),
+        api.getDeals().catch(() => []),
       ]);
-      setServices(servicesData);
-      setCategories(categoriesData);
-      setDeals(dealsData);
+      setServices(Array.isArray(servicesData) ? servicesData : []);
+      setCategories(Array.isArray(categoriesData) ? categoriesData : []);
+      setDeals(Array.isArray(dealsData) ? dealsData : []);
     } catch (err) {
       console.error('Failed to load initial masters:', err);
     } finally {
