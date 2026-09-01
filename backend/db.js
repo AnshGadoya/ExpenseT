@@ -12,7 +12,7 @@ const tursoToken = process.env.TURSO_AUTH_TOKEN;
 
 let db;
 if (tursoUrl) {
-  db = new LibSqlite(tursoUrl, { authToken: tursoToken });
+  db = new LibSqlite.Database(tursoUrl, { authToken: tursoToken });
 } else {
   db = new BetterSqlite(dbPath);
 }
@@ -23,6 +23,7 @@ try {
 } catch (e) {
   // Ignore pragma unsupported on remote connection
 }
+
 
 
 // Initialize database schema
