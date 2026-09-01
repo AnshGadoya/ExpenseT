@@ -1,4 +1,5 @@
-const BASE_URL = import.meta.env.VITE_API_URL || '/api';
+const rawBase = import.meta.env.VITE_API_URL || 'https://expenset-api.onrender.com/api';
+const BASE_URL = rawBase.endsWith('/') ? rawBase.slice(0, -1) : rawBase;
 
 export async function fetchAPI(endpoint, options = {}) {
   const config = {
