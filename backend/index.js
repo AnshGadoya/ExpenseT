@@ -25,6 +25,29 @@ function getLastInsertId(info, tableName = '') {
   return lastRow ? lastRow.id : null;
 }
 
+function safeAll(stmt, ...params) {
+  try {
+    const res = params.length > 0 ? stmt.all(...params) : stmt.all();
+    if (Array.isArray(res)) return res;
+    if (res && Array.isArray(res.rows)) return res.rows;
+    return [];
+  } catch (e) {
+    console.error('safeAll error:', e);
+    return [];
+  }
+}
+
+function safeGet(stmt, ...params) {
+  try {
+    const res = params.length > 0 ? stmt.get(...params) : stmt.get();
+    if (res && res.rows && Array.isArray(res.rows)) return res.rows[0] || null;
+    return res || null;
+  } catch (e) {
+    console.error('safeGet error:', e);
+    return null;
+  }
+}
+
 app.use(cors({
   origin: '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -43,7 +66,7 @@ app.get('/api/health', (req, res) => {
 // ==========================================
 app.get('/api/services', (req, res) => {
   try {
-    const services = db.prepare('SELECT * FROM services ORDER BY name ASC').all();
+    const services = safeAll(db.prepare('SELECT * FROM services ORDER BY name ASC'));
     res.json(services);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -215,7 +238,7 @@ app.get('/api/expenses', (req, res) => {
     }
 
     query += ' ORDER BY e.expense_date DESC, e.id DESC';
-    const expenses = db.prepare(query).all(...params);
+    const expenses = safeAll(db.prepare(query), ...params);
     res.json(expenses);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -331,9 +354,8 @@ app.get('/api/deals', (req, res) => {
     }
 
     query += ' ORDER BY d.deal_date DESC, d.id DESC';
-    const deals = db.prepare(query).all(...params);
+    const deals = safeAll(db.prepare(query), ...params);
 
-    // Attach services and payment installments to each deal
     const getServices = db.prepare(`
       SELECT ds.*, s.name as service_name, s.category as service_category
       FROM deal_services ds
@@ -347,8 +369,8 @@ app.get('/api/deals', (req, res) => {
 
     const fullDeals = deals.map(deal => ({
       ...deal,
-      services: getServices.all(deal.id),
-      payments: getPayments.all(deal.id)
+      services: safeAll(getServices, deal.id),
+      payments: safeAll(getPayments, deal.id)
     }));
 
     res.json(fullDeals);
@@ -360,21 +382,21 @@ app.get('/api/deals', (req, res) => {
 app.get('/api/deals/:id', (req, res) => {
   try {
     const { id } = req.params;
-    const deal = db.prepare('SELECT * FROM client_deals WHERE id = ?').get(id);
+    const deal = safeGet(db.prepare('SELECT * FROM client_deals WHERE id = ?'), id);
     if (!deal) {
       return res.status(404).json({ error: 'Deal not found' });
     }
 
-    const services = db.prepare(`
+    const services = safeAll(db.prepare(`
       SELECT ds.*, s.name as service_name, s.category as service_category
       FROM deal_services ds
       JOIN services s ON ds.service_id = s.id
       WHERE ds.deal_id = ?
-    `).all(id);
+    `), id);
 
-    const payments = db.prepare(`
+    const payments = safeAll(db.prepare(`
       SELECT * FROM client_payments WHERE deal_id = ? ORDER BY payment_date DESC, id DESC
-    `).all(id);
+    `), id);
 
     res.json({ ...deal, services, payments });
   } catch (error) {
@@ -450,7 +472,7 @@ app.post('/api/deals', (req, res) => {
         for (const s of services) {
           const serviceId = typeof s === 'object' ? s.service_id : s;
           const agreedPrice = typeof s === 'object' && s.agreed_price ? Number(s.agreed_price) : 0;
-          const serviceData = db.prepare('SELECT name FROM services WHERE id = ?').get(serviceId);
+          const serviceData = safeGet(db.prepare('SELECT name FROM services WHERE id = ?'), serviceId);
           dsStmt.run(dealId, serviceId, serviceData ? serviceData.name : 'Custom Service', agreedPrice);
         }
       }
@@ -475,11 +497,11 @@ app.post('/api/deals', (req, res) => {
     });
 
     const newDealId = insertDealTx();
-    const createdDeal = db.prepare('SELECT * FROM client_deals WHERE id = ?').get(newDealId);
-    const linkedServices = db.prepare(`
+    const createdDeal = safeGet(db.prepare('SELECT * FROM client_deals WHERE id = ?'), newDealId);
+    const linkedServices = safeAll(db.prepare(`
       SELECT ds.*, s.name as service_name FROM deal_services ds JOIN services s ON ds.service_id = s.id WHERE ds.deal_id = ?
-    `).all(newDealId);
-    const payments = db.prepare('SELECT * FROM client_payments WHERE deal_id = ?').all(newDealId);
+    `), newDealId);
+    const payments = safeAll(db.prepare('SELECT * FROM client_payments WHERE deal_id = ?'), newDealId);
 
     res.status(201).json({ ...createdDeal, services: linkedServices, payments });
   } catch (error) {
@@ -505,7 +527,7 @@ app.put('/api/deals/:id', (req, res) => {
       services
     } = req.body;
 
-    const currentDeal = db.prepare('SELECT * FROM client_deals WHERE id = ?').get(id);
+    const currentDeal = safeGet(db.prepare('SELECT * FROM client_deals WHERE id = ?'), id);
     if (!currentDeal) {
       return res.status(404).json({ error: 'Deal not found' });
     }
@@ -555,18 +577,18 @@ app.put('/api/deals/:id', (req, res) => {
         for (const s of services) {
           const serviceId = typeof s === 'object' ? s.service_id : s;
           const agreedPrice = typeof s === 'object' && s.agreed_price ? Number(s.agreed_price) : 0;
-          const serviceData = db.prepare('SELECT name FROM services WHERE id = ?').get(serviceId);
+          const serviceData = safeGet(db.prepare('SELECT name FROM services WHERE id = ?'), serviceId);
           dsStmt.run(id, serviceId, serviceData ? serviceData.name : 'Custom Service', agreedPrice);
         }
       }
     });
 
     updateTx();
-    const updatedDeal = db.prepare('SELECT * FROM client_deals WHERE id = ?').get(id);
-    const linkedServices = db.prepare(`
+    const updatedDeal = safeGet(db.prepare('SELECT * FROM client_deals WHERE id = ?'), id);
+    const linkedServices = safeAll(db.prepare(`
       SELECT ds.*, s.name as service_name FROM deal_services ds JOIN services s ON ds.service_id = s.id WHERE ds.deal_id = ?
-    `).all(id);
-    const payments = db.prepare('SELECT * FROM client_payments WHERE deal_id = ?').all(id);
+    `), id);
+    const payments = safeAll(db.prepare('SELECT * FROM client_payments WHERE deal_id = ?'), id);
 
     res.json({ ...updatedDeal, services: linkedServices, payments });
   } catch (error) {
@@ -595,7 +617,7 @@ app.post('/api/deals/:id/payments', (req, res) => {
     }
 
     const payAmount = Number(amount);
-    const deal = db.prepare('SELECT * FROM client_deals WHERE id = ?').get(id);
+    const deal = safeGet(db.prepare('SELECT * FROM client_deals WHERE id = ?'), id);
     if (!deal) {
       return res.status(404).json({ error: 'Deal not found' });
     }
@@ -608,7 +630,8 @@ app.post('/api/deals/:id/payments', (req, res) => {
       `).run(id, payAmount, payment_date, payment_mode || 'UPI', reference_no || null, notes ? notes.trim() : null);
 
       // 2. Recalculate total received and pending for this deal
-      const totalRec = db.prepare('SELECT SUM(amount) as total FROM client_payments WHERE deal_id = ?').get(id).total || 0;
+      const totalRecRow = safeGet(db.prepare('SELECT SUM(amount) as total FROM client_payments WHERE deal_id = ?'), id);
+      const totalRec = totalRecRow?.total || 0;
       const newPending = Math.max(0, deal.total_deal_amount - totalRec);
       const newStatus = newPending === 0 ? 'completed' : 'active';
 
@@ -622,8 +645,8 @@ app.post('/api/deals/:id/payments', (req, res) => {
     });
 
     const result = recordPayTx();
-    const updatedDeal = db.prepare('SELECT * FROM client_deals WHERE id = ?').get(id);
-    const payments = db.prepare('SELECT * FROM client_payments WHERE deal_id = ? ORDER BY payment_date DESC, id DESC').all(id);
+    const updatedDeal = safeGet(db.prepare('SELECT * FROM client_deals WHERE id = ?'), id);
+    const payments = safeAll(db.prepare('SELECT * FROM client_payments WHERE deal_id = ? ORDER BY payment_date DESC, id DESC'), id);
 
     res.status(201).json({
       message: 'Payment recorded successfully',
@@ -640,7 +663,7 @@ app.post('/api/deals/:id/payments', (req, res) => {
 app.delete('/api/deals/payments/:paymentId', (req, res) => {
   try {
     const { paymentId } = req.params;
-    const payment = db.prepare('SELECT * FROM client_payments WHERE id = ?').get(paymentId);
+    const payment = safeGet(db.prepare('SELECT * FROM client_payments WHERE id = ?'), paymentId);
     if (!payment) {
       return res.status(404).json({ error: 'Payment record not found' });
     }
@@ -648,8 +671,9 @@ app.delete('/api/deals/payments/:paymentId', (req, res) => {
     const dealId = payment.deal_id;
     const delTx = db.transaction(() => {
       db.prepare('DELETE FROM client_payments WHERE id = ?').run(paymentId);
-      const totalRec = db.prepare('SELECT COALESCE(SUM(amount), 0) as total FROM client_payments WHERE deal_id = ?').get(dealId).total;
-      const deal = db.prepare('SELECT total_deal_amount FROM client_deals WHERE id = ?').get(dealId);
+      const totalRecRow = safeGet(db.prepare('SELECT COALESCE(SUM(amount), 0) as total FROM client_payments WHERE deal_id = ?'), dealId);
+      const totalRec = totalRecRow.total;
+      const deal = safeGet(db.prepare('SELECT total_deal_amount FROM client_deals WHERE id = ?'), dealId);
       const newPending = Math.max(0, deal.total_deal_amount - totalRec);
       const newStatus = newPending === 0 ? 'completed' : 'active';
 
@@ -671,7 +695,7 @@ app.put('/api/deals/:id/lost', (req, res) => {
   try {
     const { id } = req.params;
     const { loss_reason } = req.body;
-    const deal = db.prepare('SELECT * FROM client_deals WHERE id = ?').get(id);
+    const deal = safeGet(db.prepare('SELECT * FROM client_deals WHERE id = ?'), id);
     if (!deal) {
       return res.status(404).json({ error: 'Deal not found' });
     }
@@ -687,7 +711,7 @@ app.put('/api/deals/:id/lost', (req, res) => {
       WHERE id = ?
     `).run(updatedNotes, id);
 
-    const updated = db.prepare('SELECT * FROM client_deals WHERE id = ?').get(id);
+    const updated = safeGet(db.prepare('SELECT * FROM client_deals WHERE id = ?'), id);
     res.json(updated);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -697,7 +721,7 @@ app.put('/api/deals/:id/lost', (req, res) => {
 app.put('/api/deals/:id/restore', (req, res) => {
   try {
     const { id } = req.params;
-    const deal = db.prepare('SELECT * FROM client_deals WHERE id = ?').get(id);
+    const deal = safeGet(db.prepare('SELECT * FROM client_deals WHERE id = ?'), id);
     if (!deal) {
       return res.status(404).json({ error: 'Deal not found' });
     }
@@ -713,7 +737,7 @@ app.put('/api/deals/:id/restore', (req, res) => {
       WHERE id = ?
     `).run(newStatus, updatedNotes, id);
 
-    const updated = db.prepare('SELECT * FROM client_deals WHERE id = ?').get(id);
+    const updated = safeGet(db.prepare('SELECT * FROM client_deals WHERE id = ?'), id);
     res.json(updated);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -724,7 +748,7 @@ app.put('/api/deals/:id/close', (req, res) => {
   try {
     const { id } = req.params;
     const { close_reason } = req.body || {};
-    const deal = db.prepare('SELECT * FROM client_deals WHERE id = ?').get(id);
+    const deal = safeGet(db.prepare('SELECT * FROM client_deals WHERE id = ?'), id);
     if (!deal) {
       return res.status(404).json({ error: 'Deal not found' });
     }
@@ -740,7 +764,7 @@ app.put('/api/deals/:id/close', (req, res) => {
       WHERE id = ?
     `).run(updatedNotes, id);
 
-    const updated = db.prepare('SELECT * FROM client_deals WHERE id = ?').get(id);
+    const updated = safeGet(db.prepare('SELECT * FROM client_deals WHERE id = ?'), id);
     res.json(updated);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -780,44 +804,44 @@ app.get('/api/analytics/summary', (req, res) => {
     }
 
     // 1. Total Expenses (Regular Expenses + Team Salary Payments)
-    const totalRegularExpensesRow = db.prepare(`
+    const totalRegularExpensesRow = safeGet(db.prepare(`
       SELECT COALESCE(SUM(amount), 0) as total FROM expenses e ${expDateFilter}
-    `).get(...expParams);
+    `), ...expParams);
     const salDateFilter = expDateFilter.replace(/e\.expense_date/g, 'sp.payment_date');
-    const totalSalaryExpensesRow = db.prepare(`
+    const totalSalaryExpensesRow = safeGet(db.prepare(`
       SELECT COALESCE(SUM(amount), 0) as total FROM salary_payments sp WHERE 1=1 ${salDateFilter.replace('WHERE', 'AND')}
-    `).get(...expParams);
+    `), ...expParams);
 
     const totalExpenses = (totalRegularExpensesRow ? totalRegularExpensesRow.total : 0) + (totalSalaryExpensesRow ? totalSalaryExpensesRow.total : 0);
 
     // 2. Total Collected Revenue (from payments)
-    const totalRevenueRow = db.prepare(`
+    const totalRevenueRow = safeGet(db.prepare(`
       SELECT COALESCE(SUM(amount), 0) as total FROM client_payments p ${payDateFilter}
-    `).get(...payParams);
+    `), ...payParams);
     const totalRevenue = totalRevenueRow ? totalRevenueRow.total : 0;
 
     // 3. Total Closed Deal Volume
-    const totalDealsRow = db.prepare(`
+    const totalDealsRow = safeGet(db.prepare(`
       SELECT COALESCE(SUM(total_deal_amount), 0) as total, COUNT(*) as count FROM client_deals d ${dealDateFilter}
-    `).get(...dealParams);
+    `), ...dealParams);
     const totalDealVolume = totalDealsRow ? totalDealsRow.total : 0;
     const totalDealsCount = totalDealsRow ? totalDealsRow.count : 0;
 
     // 4. Overall Pending Receivables (active collectible market balance)
-    const receivablesRow = db.prepare(`
+    const receivablesRow = safeGet(db.prepare(`
       SELECT COALESCE(SUM(pending_amount), 0) as total, COUNT(*) as count 
       FROM client_deals 
       WHERE pending_amount > 0 AND status = 'active'
-    `).get();
+    `));
     const totalReceivables = receivablesRow ? receivablesRow.total : 0;
     const pendingDealsCount = receivablesRow ? receivablesRow.count : 0;
 
     // Lost / Bad Debt deals
-    const lostRow = db.prepare(`
+    const lostRow = safeGet(db.prepare(`
       SELECT COALESCE(SUM(pending_amount), 0) as total_lost, COUNT(*) as count 
       FROM client_deals 
       WHERE status = 'lost'
-    `).get();
+    `));
     const totalLostAmount = lostRow ? lostRow.total_lost : 0;
     const lostDealsCount = lostRow ? lostRow.count : 0;
 
@@ -826,7 +850,7 @@ app.get('/api/analytics/summary', (req, res) => {
     const profitMargin = totalRevenue > 0 ? ((netProfit / totalRevenue) * 100).toFixed(1) : 0;
 
     // 6. Expense Bifurcation by Category
-    const categoryStats = db.prepare(`
+    const categoryStats = safeAll(db.prepare(`
       SELECT c.id, c.name, c.color, c.icon, COALESCE(SUM(e.amount), 0) as total_amount, COUNT(e.id) as count
       FROM expense_categories c
       JOIN expenses e ON e.category_id = c.id
@@ -834,7 +858,7 @@ app.get('/api/analytics/summary', (req, res) => {
       GROUP BY c.id, c.name, c.color, c.icon
       HAVING total_amount > 0
       ORDER BY total_amount DESC
-    `).all(...expParams);
+    `), ...expParams);
 
     // Calculate percentage for each category
     const categoryBreakdown = categoryStats.map(c => ({
@@ -843,7 +867,7 @@ app.get('/api/analytics/summary', (req, res) => {
     }));
 
     // 7. Revenue by Digital Service
-    const serviceStats = db.prepare(`
+    const serviceStats = safeAll(db.prepare(`
       SELECT s.id, s.name, s.category, COUNT(ds.id) as deal_count,
         COALESCE(SUM(CASE WHEN ds.agreed_price > 0 THEN ds.agreed_price ELSE s.base_price END), 0) as estimated_revenue
       FROM services s
@@ -852,24 +876,24 @@ app.get('/api/analytics/summary', (req, res) => {
       ${dealDateFilter}
       GROUP BY s.id, s.name, s.category
       ORDER BY estimated_revenue DESC
-    `).all(...dealParams);
+    `), ...dealParams);
 
     // 8. Monthly Trends (Income vs Expense)
-    const monthlyExpenses = db.prepare(`
+    const monthlyExpenses = safeAll(db.prepare(`
       SELECT strftime('%Y-%m', expense_date) as month, SUM(amount) as total_expense
       FROM expenses
       GROUP BY strftime('%Y-%m', expense_date)
       ORDER BY month DESC
       LIMIT 12
-    `).all();
+    `));
 
-    const monthlyIncome = db.prepare(`
+    const monthlyIncome = safeAll(db.prepare(`
       SELECT strftime('%Y-%m', payment_date) as month, SUM(amount) as total_income
       FROM client_payments
       GROUP BY strftime('%Y-%m', payment_date)
       ORDER BY month DESC
       LIMIT 12
-    `).all();
+    `));
 
     // Merge monthly trends
     const monthMap = {};
@@ -888,39 +912,39 @@ app.get('/api/analytics/summary', (req, res) => {
     const monthlyTrends = Object.values(monthMap).sort((a, b) => a.month.localeCompare(b.month));
 
     // 9. Payment mode breakdown for expenses
-    const paymentModeBreakdown = db.prepare(`
+    const paymentModeBreakdown = safeAll(db.prepare(`
       SELECT payment_mode, SUM(amount) as total, COUNT(*) as count
       FROM expenses e
       ${expDateFilter}
       GROUP BY payment_mode
       ORDER BY total DESC
-    `).all(...expParams);
+    `), ...expParams);
 
     // 10. Top Pending Clients (Active collectibles only)
-    const topPendingClients = db.prepare(`
+    const topPendingClients = safeAll(db.prepare(`
       SELECT id, client_name, company_name, client_phone, total_deal_amount, received_amount, pending_amount, deal_date
       FROM client_deals
       WHERE pending_amount > 0 AND status = 'active'
       ORDER BY pending_amount DESC
       LIMIT 5
-    `).all();
+    `));
 
     // 11. Recent 10 Transactions (Expenses + Payments)
-    const recentExpenses = db.prepare(`
+    const recentExpenses = safeAll(db.prepare(`
       SELECT e.id, 'expense' as type, e.amount, e.expense_date as date, e.payment_mode, e.description as title, c.name as subtitle, c.color as badge_color
       FROM expenses e
       JOIN expense_categories c ON e.category_id = c.id
       ORDER BY e.expense_date DESC, e.id DESC
       LIMIT 10
-    `).all();
+    `));
 
-    const recentPayments = db.prepare(`
+    const recentPayments = safeAll(db.prepare(`
       SELECT p.id, 'income' as type, p.amount, p.payment_date as date, p.payment_mode, d.client_name as title, COALESCE(d.company_name, 'Client Payment') as subtitle, '#10b981' as badge_color
       FROM client_payments p
       JOIN client_deals d ON p.deal_id = d.id
       ORDER BY p.payment_date DESC, p.id DESC
       LIMIT 10
-    `).all();
+    `));
 
     const recentTransactions = [...recentExpenses, ...recentPayments]
       .sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id)
@@ -954,7 +978,7 @@ app.get('/api/analytics/summary', (req, res) => {
 // Get all team members with payment stats
 app.get('/api/employees', (req, res) => {
   try {
-    const employees = db.prepare(`
+    const employees = safeAll(db.prepare(`
       SELECT 
         e.*,
         COALESCE(SUM(sp.amount), 0) as total_paid_to_date,
@@ -963,7 +987,7 @@ app.get('/api/employees', (req, res) => {
       LEFT JOIN salary_payments sp ON e.id = sp.employee_id
       GROUP BY e.id
       ORDER BY e.status ASC, e.name ASC
-    `).all();
+    `));
     res.json(employees);
   } catch (error) {
     res.status(500).json({ error: error.message });
