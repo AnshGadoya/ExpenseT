@@ -11,14 +11,23 @@ const tursoUrl = process.env.TURSO_DATABASE_URL;
 const tursoToken = process.env.TURSO_AUTH_TOKEN;
 
 let db;
-if (tursoUrl && tursoUrl.trim()) {
-  let fullUrl = tursoUrl.trim();
-  if (tursoToken && tursoToken.trim() && !fullUrl.includes('authToken=')) {
-    const separator = fullUrl.includes('?') ? '&' : '?';
-    fullUrl = `${fullUrl}${separator}authToken=${tursoToken.trim()}`;
+try {
+  if (tursoUrl && tursoUrl.trim()) {
+    let fullUrl = tursoUrl.trim();
+    if (tursoToken && tursoToken.trim() && !fullUrl.includes('authToken=')) {
+      const separator = fullUrl.includes('?') ? '&' : '?';
+      fullUrl = `${fullUrl}${separator}authToken=${tursoToken.trim()}`;
+    }
+    db = new LibSqlite.Database(fullUrl);
+    const testRow = db.prepare('SELECT 1 as test').get();
+    if (!testRow || testRow.test !== 1) {
+      throw new Error('Remote database query did not return valid result');
+    }
+  } else {
+    db = new BetterSqlite(dbPath);
   }
-  db = new LibSqlite.Database(fullUrl);
-} else {
+} catch (e) {
+  console.warn('Failed to connect to Turso remote DB, falling back to local SQLite:', e.message);
   db = new BetterSqlite(dbPath);
 }
 
