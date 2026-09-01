@@ -134,11 +134,6 @@ export function initDB() {
       FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
     );
   `);
-
-  try { db.exec(`ALTER TABLE client_deals ADD COLUMN duration_months INTEGER DEFAULT 1`); } catch (e) { }
-  try { db.exec(`ALTER TABLE client_deals ADD COLUMN expiry_date DATE`); } catch (e) { }
-  try { db.exec(`ALTER TABLE client_deals ADD COLUMN insta_id TEXT`); } catch (e) { }
-
   // Seed default Services if empty
   const serviceCount = db.prepare('SELECT COUNT(*) as count FROM services').get().count;
   if (serviceCount === 0) {
