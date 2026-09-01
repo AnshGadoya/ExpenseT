@@ -11,8 +11,13 @@ const tursoUrl = process.env.TURSO_DATABASE_URL;
 const tursoToken = process.env.TURSO_AUTH_TOKEN;
 
 let db;
-if (tursoUrl) {
-  db = new LibSqlite.Database(tursoUrl, { authToken: tursoToken });
+if (tursoUrl && tursoUrl.trim()) {
+  let fullUrl = tursoUrl.trim();
+  if (tursoToken && tursoToken.trim() && !fullUrl.includes('authToken=')) {
+    const separator = fullUrl.includes('?') ? '&' : '?';
+    fullUrl = `${fullUrl}${separator}authToken=${tursoToken.trim()}`;
+  }
+  db = new LibSqlite.Database(fullUrl);
 } else {
   db = new BetterSqlite(dbPath);
 }
@@ -23,6 +28,7 @@ try {
 } catch (e) {
   // Ignore pragma unsupported on remote connection
 }
+
 
 
 
