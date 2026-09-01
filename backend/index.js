@@ -10,6 +10,21 @@ const PORT = process.env.PORT || 5050;
 // Initialize DB schema & seeds
 initDB();
 
+function getLastInsertId(info, tableName = '') {
+  if (info && info.lastInsertRowid !== undefined && info.lastInsertRowid !== null) {
+    return info.lastInsertRowid;
+  }
+  if (info && info.lastID !== undefined && info.lastID !== null) {
+    return info.lastID;
+  }
+  if (tableName) {
+    const row = db.prepare(`SELECT id FROM ${tableName} ORDER BY id DESC LIMIT 1`).get();
+    if (row && row.id) return row.id;
+  }
+  const lastRow = db.prepare('SELECT last_insert_rowid() as id').get();
+  return lastRow ? lastRow.id : null;
+}
+
 app.use(cors({
   origin: '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -46,7 +61,8 @@ app.post('/api/services', (req, res) => {
       VALUES (?, ?, ?, ?, 1)
     `);
     const info = stmt.run(name.trim(), category || 'Digital Marketing', Number(base_price) || 0, description || '');
-    const newService = db.prepare('SELECT * FROM services WHERE id = ?').get(info.lastInsertRowid);
+    const insertedId = getLastInsertId(info, 'services');
+    const newService = db.prepare('SELECT * FROM services WHERE id = ?').get(insertedId);
     res.status(201).json(newService);
   } catch (error) {
     if (error.message.includes('UNIQUE constraint failed')) {
@@ -119,7 +135,8 @@ app.post('/api/categories', (req, res) => {
       VALUES (?, ?, ?, ?, 1)
     `);
     const info = stmt.run(name.trim(), icon || 'tag', color || '#3b82f6', description || '');
-    const newCat = db.prepare('SELECT * FROM expense_categories WHERE id = ?').get(info.lastInsertRowid);
+    const insertedId = getLastInsertId(info, 'expense_categories');
+    const newCat = db.prepare('SELECT * FROM expense_categories WHERE id = ?').get(insertedId);
     res.status(201).json(newCat);
   } catch (error) {
     if (error.message.includes('UNIQUE constraint failed')) {
@@ -225,12 +242,13 @@ app.post('/api/expenses', (req, res) => {
       receipt_no ? receipt_no.trim() : null
     );
 
+    const insertedId = getLastInsertId(info, 'expenses');
     const created = db.prepare(`
       SELECT e.*, c.name as category_name, c.color as category_color, c.icon as category_icon
       FROM expenses e
       JOIN expense_categories c ON e.category_id = c.id
       WHERE e.id = ?
-    `).get(info.lastInsertRowid);
+    `).get(insertedId);
 
     res.status(201).json(created);
   } catch (error) {
@@ -421,7 +439,7 @@ app.post('/api/deals', (req, res) => {
         notes ? notes.trim() : null
       );
 
-      const dealId = dealInfo.lastInsertRowid;
+      const dealId = getLastInsertId(dealInfo, 'client_deals');
 
       // Insert linked services
       if (Array.isArray(services) && services.length > 0) {
@@ -973,7 +991,8 @@ app.post('/api/employees', (req, res) => {
       joining_date || new Date().toISOString().split('T')[0],
       notes || ''
     );
-    const newEmp = db.prepare('SELECT * FROM employees WHERE id = ?').get(info.lastInsertRowid);
+    const insertedId = getLastInsertId(info, 'employees');
+    const newEmp = db.prepare('SELECT * FROM employees WHERE id = ?').get(insertedId);
     res.status(201).json(newEmp);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -1087,11 +1106,12 @@ app.post('/api/salaries', (req, res) => {
       reference_no || '',
       notes || ''
     );
+    const insertedId = getLastInsertId(info, 'salary_payments');
     const newSal = db.prepare(`
       SELECT sp.*, e.name as employee_name, e.job_role 
       FROM salary_payments sp JOIN employees e ON sp.employee_id = e.id 
       WHERE sp.id = ?
-    `).get(info.lastInsertRowid);
+    `).get(insertedId);
     res.status(201).json(newSal);
   } catch (error) {
     res.status(500).json({ error: error.message });
