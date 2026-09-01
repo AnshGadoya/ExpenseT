@@ -1,0 +1,20 @@
+# Node dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build files
+dist/
+build/
+
+# SQLite temporary WAL/SHM files
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.log
+
+# Environment & OS
+.env
+.env.local
+.DS_Store
+Thumbs.db
