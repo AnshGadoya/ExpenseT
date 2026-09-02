@@ -535,7 +535,10 @@ app.put('/api/deals/:id', (req, res) => {
     const totalAmount = total_deal_amount !== undefined ? Number(total_deal_amount) : currentDeal.total_deal_amount;
     const receivedAmount = currentDeal.received_amount;
     const pendingAmount = Math.max(0, totalAmount - receivedAmount);
-    const updatedStatus = status || (pendingAmount === 0 ? 'completed' : 'active');
+    let updatedStatus = status || (pendingAmount === 0 ? 'completed' : 'active');
+    if (updatedStatus === 'completed' && pendingAmount > 0) {
+      updatedStatus = 'active';
+    }
     const durMonths = duration_months !== undefined ? Number(duration_months) : (currentDeal.duration_months || 1);
 
     const activeDealDate = deal_date || currentDeal.deal_date;
@@ -751,6 +754,12 @@ app.put('/api/deals/:id/close', (req, res) => {
     const deal = safeGet(db.prepare('SELECT * FROM client_deals WHERE id = ?'), id);
     if (!deal) {
       return res.status(404).json({ error: 'Deal not found' });
+    }
+
+    if (deal.pending_amount > 0) {
+      return res.status(400).json({ 
+        error: `Cannot close client deal. Full payment of ₹${deal.total_deal_amount.toLocaleString('en-IN')} has not been completed. Outstanding balance: ₹${deal.pending_amount.toLocaleString('en-IN')}. Please collect full payment or mark as lost.` 
+      });
     }
 
     const reasonText = close_reason ? close_reason.trim() : 'Contract period completed / Non-renewed';

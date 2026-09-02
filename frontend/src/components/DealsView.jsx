@@ -414,6 +414,13 @@ export default function DealsView({
   // Confirm Close Contract
   const handleConfirmCloseDeal = async (e) => {
     e.preventDefault();
+    if (!closeModalDeal) return;
+
+    if (closeModalDeal.pending_amount > 0) {
+      alert(`Cannot close deal! Outstanding balance of ₹${closeModalDeal.pending_amount.toLocaleString('en-IN')} remains unpaid. Full payment is required before closing a client.`);
+      return;
+    }
+
     try {
       await api.closeDeal(closeModalDeal.id, closeReason.trim() || 'Contract cycle completed • Non-renewed');
       setCloseModalDeal(null);
@@ -1262,41 +1269,84 @@ export default function DealsView({
               </p>
             </div>
 
-            {/* Quick Reason Suggestions */}
-            <div>
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                Closing Reason:
-              </label>
-              <div className="flex flex-wrap gap-1.5">
-                {[
-                  'Contract cycle completed • Client did not renew membership',
-                  'One-time deliverables (Reels/Ads) completed',
-                  'Client paused marketing campaign for season',
-                  'Contract concluded with full satisfaction',
-                ].map((reason, idx) => (
-                  <button
-                    key={idx}
-                    type="button"
-                    onClick={() => setCloseReason(reason)}
-                    className="text-[11px] px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950 hover:text-indigo-600 transition-colors border border-slate-200 dark:border-slate-700"
-                  >
-                    {reason}
-                  </button>
-                ))}
-              </div>
-            </div>
+            {closeModalDeal.pending_amount > 0 ? (
+              <div className="p-4 bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 rounded-2xl text-xs space-y-3">
+                <div className="flex items-start gap-2 text-amber-800 dark:text-amber-300 font-bold">
+                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+                  <div>
+                    <p className="font-extrabold text-sm text-amber-900 dark:text-amber-200">Full Payment Required to Close</p>
+                    <p className="font-normal mt-1 text-amber-700 dark:text-amber-400">
+                      This client contract cannot be closed because an outstanding balance of <strong className="font-bold text-amber-900 dark:text-amber-200">₹{closeModalDeal.pending_amount.toLocaleString('en-IN')}</strong> remains unpaid (Total Deal: ₹{closeModalDeal.total_deal_amount.toLocaleString('en-IN')}, Received: ₹{closeModalDeal.received_amount.toLocaleString('en-IN')}).
+                    </p>
+                  </div>
+                </div>
 
-            <div>
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                Closing Remarks & Scope Notes
-              </label>
-              <textarea
-                rows="2"
-                value={closeReason}
-                onChange={(e) => setCloseReason(e.target.value)}
-                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-white text-xs focus:outline-none focus:border-indigo-600"
-              />
-            </div>
+                <div className="pt-2 border-t border-amber-200/60 dark:border-amber-800/60 flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const d = closeModalDeal;
+                      setCloseModalDeal(null);
+                      handleOpenPaymentLedger(d);
+                    }}
+                    className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-2xs transition-colors flex items-center gap-1"
+                  >
+                    <CreditCard className="w-3.5 h-3.5" />
+                    Record Payment
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const d = closeModalDeal;
+                      setCloseModalDeal(null);
+                      handleOpenMarkLost(d);
+                    }}
+                    className="px-3 py-1.5 rounded-xl bg-rose-100 dark:bg-rose-900/40 hover:bg-rose-200 text-rose-700 dark:text-rose-300 font-bold text-xs border border-rose-200 dark:border-rose-800 transition-colors flex items-center gap-1"
+                  >
+                    <FileX2 className="w-3.5 h-3.5" />
+                    Mark as Lost / Bad Debt
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                {/* Quick Reason Suggestions */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                    Closing Reason:
+                  </label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      'Contract cycle completed • Client did not renew membership',
+                      'One-time deliverables (Reels/Ads) completed',
+                      'Client paused marketing campaign for season',
+                      'Contract concluded with full satisfaction',
+                    ].map((reason, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => setCloseReason(reason)}
+                        className="text-[11px] px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950 hover:text-indigo-600 transition-colors border border-slate-200 dark:border-slate-700"
+                      >
+                        {reason}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Closing Remarks & Scope Notes
+                  </label>
+                  <textarea
+                    rows="2"
+                    value={closeReason}
+                    onChange={(e) => setCloseReason(e.target.value)}
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-white text-xs focus:outline-none focus:border-indigo-600"
+                  />
+                </div>
+              </>
+            )}
 
             <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
               <button
@@ -1308,7 +1358,12 @@ export default function DealsView({
               </button>
               <button
                 type="submit"
-                className="px-5 py-2 rounded-xl bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 font-bold text-xs sm:text-sm shadow-sm transition-all"
+                disabled={closeModalDeal.pending_amount > 0}
+                className={`px-5 py-2 rounded-xl font-bold text-xs sm:text-sm shadow-sm transition-all ${
+                  closeModalDeal.pending_amount > 0
+                    ? 'bg-slate-300 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed opacity-60'
+                    : 'bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 hover:bg-slate-800 dark:hover:bg-slate-200'
+                }`}
               >
                 Confirm & Close Deal
               </button>
