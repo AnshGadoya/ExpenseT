@@ -134,13 +134,13 @@ app.delete('/api/services/:id', (req, res) => {
 // ==========================================
 app.get('/api/categories', (req, res) => {
   try {
-    const categories = db.prepare(`
+    const categories = safeAll(db.prepare(`
       SELECT c.*, 
         (SELECT COUNT(*) FROM expenses e WHERE e.category_id = c.id) as expense_count,
         (SELECT COALESCE(SUM(amount), 0) FROM expenses e WHERE e.category_id = c.id) as total_spent
       FROM expense_categories c
       ORDER BY c.name ASC
-    `).all();
+    `));
     res.json(categories);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -1165,12 +1165,12 @@ app.delete('/api/salaries/:id', (req, res) => {
 // Monthly Salary Matrix Endpoint (reproducing Google Sheets GI Team view!)
 app.get('/api/salaries/matrix', (req, res) => {
   try {
-    const employees = db.prepare('SELECT * FROM employees ORDER BY id ASC').all();
-    const payments = db.prepare(`
+    const employees = safeAll(db.prepare('SELECT * FROM employees ORDER BY id ASC'));
+    const payments = safeAll(db.prepare(`
       SELECT sp.*, e.name as employee_name
       FROM salary_payments sp
       JOIN employees e ON sp.employee_id = e.id
-    `).all();
+    `));
 
     // Default 12 month columns matching agency cycle
     const months = [
