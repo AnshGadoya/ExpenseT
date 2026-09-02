@@ -25,7 +25,7 @@ try {
       const separator = fullUrl.includes('?') ? '&' : '?';
       fullUrl = `${fullUrl}${separator}authToken=${tursoToken}`;
     }
-    console.log('⚡ Connecting to Turso Remote Database:', tursoUrl);
+    console.log('⚡ Connecting to Turso Remote Database:', fullUrl.replace(/authToken=([^&]+)/, 'authToken=***'));
     db = new LibSqlite.Database(fullUrl);
     if (typeof db.on === 'function') {
       db.on('error', (err) => {
