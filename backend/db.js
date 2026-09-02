@@ -1,5 +1,5 @@
+import { createClient } from '@libsql/client';
 import BetterSqlite from 'better-sqlite3';
-import LibSqlite from '@libsql/sqlite3';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
@@ -9,52 +9,84 @@ const __dirname = path.dirname(__filename);
 
 dotenv.config();
 dotenv.config({ path: path.join(__dirname, '.env') });
-const dbPath = path.join(__dirname, 'database.sqlite');
 
+const dbPath = path.join(__dirname, 'database.sqlite');
 const rawUrl = process.env.TURSO_DATABASE_URL;
 const rawToken = process.env.TURSO_AUTH_TOKEN;
 
 const tursoUrl = rawUrl ? rawUrl.trim().replace(/^["']|["']$/g, '') : '';
 const tursoToken = rawToken ? rawToken.trim().replace(/^["']|["']$/g, '') : '';
 
-let db;
-try {
-  if (tursoUrl) {
-    let fullUrl = tursoUrl.startsWith('libsql://') ? tursoUrl.replace('libsql://', 'https://') : tursoUrl;
-    if (tursoToken && !fullUrl.includes('authToken=')) {
-      const separator = fullUrl.includes('?') ? '&' : '?';
-      fullUrl = `${fullUrl}${separator}authToken=${tursoToken}`;
-    }
-    console.log('⚡ Connecting to Turso Remote Database:', fullUrl.replace(/authToken=([^&]+)/, 'authToken=***'));
-    db = new LibSqlite.Database(fullUrl);
-    if (typeof db.on === 'function') {
-      db.on('error', (err) => {
-        console.error('⚠️ Turso Database Event Error (Check Auth Token):', err.message || err);
-      });
-    }
-    console.log('✅ Successfully connected to Turso Remote Database!');
-  } else {
-    console.warn('⚠️ TURSO_DATABASE_URL is missing. Using local SQLite (Data will reset on redeploy)!');
-    db = new BetterSqlite(dbPath);
+let client = null;
+let localDb = null;
+let isTurso = false;
+
+if (tursoUrl) {
+  try {
+    console.log('⚡ Connecting to Turso Remote Database:', tursoUrl);
+    client = createClient({ url: tursoUrl, authToken: tursoToken });
+    isTurso = true;
+    console.log('✅ Successfully connected to Turso Remote Database via @libsql/client!');
+  } catch (e) {
+    console.error('❌ Failed to connect to Turso remote DB, falling back to local SQLite:', e.message);
+    localDb = new BetterSqlite(dbPath);
   }
-} catch (e) {
-  console.error('❌ Failed to connect to Turso remote DB, falling back to local SQLite:', e.message);
-  db = new BetterSqlite(dbPath);
+} else {
+  console.warn('⚠️ TURSO_DATABASE_URL is missing. Using local SQLite (Data will reset on redeploy)!');
+  localDb = new BetterSqlite(dbPath);
 }
 
-try {
-  db.pragma('journal_mode = WAL');
-  db.pragma('foreign_keys = ON');
-} catch (e) {
-  // Ignore pragma unsupported on remote connection
+export async function dbAll(sql, params = []) {
+  if (isTurso && client) {
+    const res = await client.execute({ sql, args: params });
+    return res.rows ? Array.from(res.rows) : [];
+  } else {
+    return localDb.prepare(sql).all(...params);
+  }
 }
 
+export async function dbGet(sql, params = []) {
+  if (isTurso && client) {
+    const res = await client.execute({ sql, args: params });
+    return (res.rows && res.rows[0]) ? res.rows[0] : null;
+  } else {
+    return localDb.prepare(sql).get(...params) || null;
+  }
+}
 
+export async function dbRun(sql, params = []) {
+  if (isTurso && client) {
+    const res = await client.execute({ sql, args: params });
+    return { lastInsertRowid: res.lastInsertRowid !== undefined ? Number(res.lastInsertRowid) : null, changes: Number(res.rowsAffected) };
+  } else {
+    const info = localDb.prepare(sql).run(...params);
+    return { lastInsertRowid: info.lastInsertRowid, changes: info.changes };
+  }
+}
 
+export async function dbExec(sql) {
+  if (isTurso && client) {
+    await client.executeMultiple(sql);
+  } else {
+    localDb.exec(sql);
+  }
+}
+
+// Universal database export object for compatibility
+const db = {
+  prepare: (sql) => ({
+    all: (...params) => dbAll(sql, params),
+    get: (...params) => dbGet(sql, params),
+    run: (...params) => dbRun(sql, params),
+  }),
+  exec: (sql) => dbExec(sql),
+};
+
+export default db;
 
 // Initialize database schema
-export function initDB() {
-  db.exec(`
+export async function initDB() {
+  await dbExec(`
     CREATE TABLE IF NOT EXISTS services (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL UNIQUE,
@@ -88,7 +120,7 @@ export function initDB() {
       total_deal_amount REAL NOT NULL,
       received_amount REAL DEFAULT 0,
       pending_amount REAL NOT NULL,
-      status TEXT DEFAULT 'active', -- active, completed, cancelled, lost
+      status TEXT DEFAULT 'active',
       notes TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
@@ -108,7 +140,7 @@ export function initDB() {
       deal_id INTEGER NOT NULL,
       amount REAL NOT NULL,
       payment_date DATE NOT NULL,
-      payment_mode TEXT NOT NULL DEFAULT 'UPI', -- UPI, Cash, Bank Transfer, Cheque, Card
+      payment_mode TEXT NOT NULL DEFAULT 'UPI',
       reference_no TEXT,
       notes TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -133,7 +165,7 @@ export function initDB() {
       name TEXT NOT NULL,
       job_role TEXT NOT NULL DEFAULT 'Graphics',
       monthly_salary REAL DEFAULT 0,
-      status TEXT DEFAULT 'Active', -- Active, Leave
+      status TEXT DEFAULT 'Active',
       phone TEXT,
       email TEXT,
       joining_date DATE,
@@ -144,49 +176,38 @@ export function initDB() {
     CREATE TABLE IF NOT EXISTS salary_payments (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       employee_id INTEGER NOT NULL,
-      month_year TEXT NOT NULL, -- e.g. 'August 2026' or '2026-08'
+      month_year TEXT NOT NULL,
       amount REAL NOT NULL,
       payment_date DATE NOT NULL,
-      payment_mode TEXT NOT NULL DEFAULT 'GPay', -- GPay, PhonePe, Paytm, Cash
+      payment_mode TEXT NOT NULL DEFAULT 'GPay',
       reference_no TEXT,
       notes TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
     );
   `);
+
   // Seed default Services if missing
   const officialServices = [
-    // 1. Specialized Creative Solutions (Branding & Identity & Product Labels)
     ['Professional Logo Design', 'Specialized Creative Solutions', 799, 'Custom vector logo design & high-res branding assets'],
     ['Visiting Card Design', 'Specialized Creative Solutions', 399, 'Print-ready double-sided business card layout'],
     ['Smart NFC Business Card', 'Specialized Creative Solutions', 349, 'Digital NFC tap business card setup & link profile'],
     ['Label Design Front', 'Specialized Creative Solutions', 499, 'Front product label packaging design'],
     ['Label Design Front & Back', 'Specialized Creative Solutions', 799, 'Complete front & back product label packaging design'],
-
-    // Digital & Production
     ['Website Development', 'Digital & Production', 9999, 'Starting @ ₹9,999 - Responsive business website / landing page'],
     ['Video Shoot Creation', 'Digital & Production', 1499, '₹1,499 / Per Reel - Professional 4K video shoot & Reel creation'],
     ['Quick Impact Marketing', 'Digital & Production', 499, '₹499 / 1 Day - 1-Day quick impact turnaround marketing campaign'],
-
-    // Meta Ads & Performance
     ['Meta Ads Service', 'Meta Ads & Performance', 6000, '₹6,000 / Month - Facebook & Instagram ad campaign setup, targeting & ROAS management (Ad spend extra)'],
   ];
 
-  const insertService = db.prepare(`
-    INSERT OR IGNORE INTO services (name, category, base_price, description)
-    VALUES (?, ?, ?, ?)
-  `);
-
   for (const s of officialServices) {
-    insertService.run(s[0], s[1], s[2], s[3]);
+    await dbRun(`
+      INSERT OR IGNORE INTO services (name, category, base_price, description)
+      VALUES (?, ?, ?, ?)
+    `, [s[0], s[1], s[2], s[3]]);
   }
 
   // Seed default Expense Categories if missing
-  const insertCat = db.prepare(`
-    INSERT OR IGNORE INTO expense_categories (name, icon, color, description)
-    VALUES (?, ?, ?, ?)
-  `);
-
   const defaultCategories = [
     ['Food & Refreshments', 'utensils', '#f97316', 'Team snacks, client dinners, shoot day lunches & coffee'],
     ['Travel & Commute', 'navigation', '#06b6d4', 'Auto, cab, metro, and local commute for shoots'],
@@ -202,9 +223,9 @@ export function initDB() {
   ];
 
   for (const c of defaultCategories) {
-    insertCat.run(c[0], c[1], c[2], c[3]);
+    await dbRun(`
+      INSERT OR IGNORE INTO expense_categories (name, icon, color, description)
+      VALUES (?, ?, ?, ?)
+    `, [c[0], c[1], c[2], c[3]]);
   }
 }
-
-export default db;
-
