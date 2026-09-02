@@ -130,9 +130,9 @@ app.delete('/api/services/:id', async (req, res) => {
 // ==========================================
 // 2. EXPENSE CATEGORIES MASTER APIS
 // ==========================================
-app.get('/api/categories', (req, res) => {
+app.get('/api/categories', async (req, res) => {
   try {
-    const categories = safeAll(db.prepare(`
+    const categories = await safeAll(db.prepare(`
       SELECT c.*, 
         (SELECT COUNT(*) FROM expenses e WHERE e.category_id = c.id) as expense_count,
         (SELECT COALESCE(SUM(amount), 0) FROM expenses e WHERE e.category_id = c.id) as total_spent
