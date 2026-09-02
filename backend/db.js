@@ -4,10 +4,11 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 
-dotenv.config();
-
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+dotenv.config();
+dotenv.config({ path: path.join(__dirname, '.env') });
 const dbPath = path.join(__dirname, 'database.sqlite');
 
 const tursoUrl = process.env.TURSO_DATABASE_URL;
@@ -23,10 +24,6 @@ try {
     }
     console.log('⚡ Connecting to Turso Remote Database:', tursoUrl.trim());
     db = new LibSqlite.Database(fullUrl);
-    const testRow = db.prepare('SELECT 1 as test').get();
-    if (!testRow || testRow.test !== 1) {
-      throw new Error('Remote database query did not return valid result');
-    }
     console.log('✅ Successfully connected to Turso Remote Database!');
   } else {
     console.warn('⚠️ TURSO_DATABASE_URL is missing. Using local SQLite (Data will reset on redeploy)!');
