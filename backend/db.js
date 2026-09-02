@@ -11,19 +11,27 @@ dotenv.config();
 dotenv.config({ path: path.join(__dirname, '.env') });
 const dbPath = path.join(__dirname, 'database.sqlite');
 
-const tursoUrl = process.env.TURSO_DATABASE_URL;
-const tursoToken = process.env.TURSO_AUTH_TOKEN;
+const rawUrl = process.env.TURSO_DATABASE_URL;
+const rawToken = process.env.TURSO_AUTH_TOKEN;
+
+const tursoUrl = rawUrl ? rawUrl.trim().replace(/^["']|["']$/g, '') : '';
+const tursoToken = rawToken ? rawToken.trim().replace(/^["']|["']$/g, '') : '';
 
 let db;
 try {
-  if (tursoUrl && tursoUrl.trim()) {
-    let fullUrl = tursoUrl.trim();
-    if (tursoToken && tursoToken.trim() && !fullUrl.includes('authToken=')) {
+  if (tursoUrl) {
+    let fullUrl = tursoUrl;
+    if (tursoToken && !fullUrl.includes('authToken=')) {
       const separator = fullUrl.includes('?') ? '&' : '?';
-      fullUrl = `${fullUrl}${separator}authToken=${tursoToken.trim()}`;
+      fullUrl = `${fullUrl}${separator}authToken=${tursoToken}`;
     }
-    console.log('⚡ Connecting to Turso Remote Database:', tursoUrl.trim());
+    console.log('⚡ Connecting to Turso Remote Database:', tursoUrl);
     db = new LibSqlite.Database(fullUrl);
+    if (typeof db.on === 'function') {
+      db.on('error', (err) => {
+        console.error('⚠️ Turso Database Event Error (Check Auth Token):', err.message || err);
+      });
+    }
     console.log('✅ Successfully connected to Turso Remote Database!');
   } else {
     console.warn('⚠️ TURSO_DATABASE_URL is missing. Using local SQLite (Data will reset on redeploy)!');
