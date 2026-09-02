@@ -417,7 +417,7 @@ export default function DealsView({
     if (!closeModalDeal) return;
 
     if (closeModalDeal.pending_amount > 0) {
-      alert(`Cannot close deal! Outstanding balance of ₹${closeModalDeal.pending_amount.toLocaleString('en-IN')} remains unpaid. Full payment is required before closing a client.`);
+      alert(`Cannot close deal! Outstanding balance of ₹${(Number(closeModalDeal.pending_amount) || 0).toLocaleString('en-IN')} remains unpaid. Full payment is required before closing a client.`);
       return;
     }
 
@@ -1276,7 +1276,7 @@ export default function DealsView({
                   <div>
                     <p className="font-extrabold text-sm text-amber-900 dark:text-amber-200">Full Payment Required to Close</p>
                     <p className="font-normal mt-1 text-amber-700 dark:text-amber-400">
-                      This client contract cannot be closed because an outstanding balance of <strong className="font-bold text-amber-900 dark:text-amber-200">₹{closeModalDeal.pending_amount.toLocaleString('en-IN')}</strong> remains unpaid (Total Deal: ₹{closeModalDeal.total_deal_amount.toLocaleString('en-IN')}, Received: ₹{closeModalDeal.received_amount.toLocaleString('en-IN')}).
+                      This client contract cannot be closed because an outstanding balance of <strong className="font-bold text-amber-900 dark:text-amber-200">₹{(Number(closeModalDeal.pending_amount) || 0).toLocaleString('en-IN')}</strong> remains unpaid (Total Deal: ₹{(Number(closeModalDeal.total_deal_amount) || 0).toLocaleString('en-IN')}, Received: ₹{(Number(closeModalDeal.received_amount) || 0).toLocaleString('en-IN')}).
                     </p>
                   </div>
                 </div>

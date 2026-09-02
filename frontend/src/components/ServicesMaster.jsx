@@ -40,11 +40,18 @@ export default function ServicesMaster({ services, onRefreshServices, darkMode }
     e.preventDefault();
     if (!formData.name.trim()) return;
 
+    const payload = {
+      name: formData.name.trim(),
+      description: formData.description ? formData.description.trim() : '',
+      base_price: Number(formData.base_price) || 0,
+      category: formData.category || 'Specialized Creative Solutions',
+    };
+
     try {
       if (editingService) {
-        await api.updateService(editingService.id, formData);
+        await api.updateService(editingService.id, payload);
       } else {
-        await api.createService(formData);
+        await api.createService(payload);
       }
       setIsModalOpen(false);
       onRefreshServices();

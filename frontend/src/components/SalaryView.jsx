@@ -982,10 +982,10 @@ export default function SalaryView({ darkMode }) {
             {Number(payForm.leave_days) > 0 && (
               <div className="p-2 rounded-lg bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800/80 text-[11px] text-amber-800 dark:text-amber-300 font-semibold flex items-center justify-between">
                 <span>
-                  Deduction ({payForm.leave_days} days @ ₹{Math.round((employees.find(e => e.id === Number(payForm.employee_id))?.monthly_salary || 0) / (payForm.working_days || 30))}/day):
+                  Deduction ({payForm.leave_days} days @ ₹{Math.round((employees.find(e => e.id === Number(payForm.employee_id))?.monthly_salary || 0) / (Number(payForm.working_days) || 30))}/day):
                 </span>
                 <strong className="text-rose-600 dark:text-rose-400 font-black">
-                  -₹{Math.round(((employees.find(e => e.id === Number(payForm.employee_id))?.monthly_salary || 0) / (payForm.working_days || 30)) * Number(payForm.leave_days)).toLocaleString('en-IN')}
+                  -₹{(Math.round(((employees.find(e => e.id === Number(payForm.employee_id))?.monthly_salary || 0) / (Number(payForm.working_days) || 30)) * Number(payForm.leave_days)) || 0).toLocaleString('en-IN')}
                 </strong>
               </div>
             )}

@@ -2,12 +2,17 @@ import * as XLSX from 'xlsx';
 
 // Format number to Indian Rupee (₹)
 export function formatCurrency(amount) {
-  if (amount === undefined || amount === null || isNaN(amount)) return '₹0';
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    maximumFractionDigits: 0,
-  }).format(amount);
+  const num = Number(amount);
+  if (amount === undefined || amount === null || isNaN(num) || !isFinite(num)) return '₹0';
+  try {
+    return new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      maximumFractionDigits: 0,
+    }).format(num);
+  } catch {
+    return '₹0';
+  }
 }
 
 // Format date into human readable string
