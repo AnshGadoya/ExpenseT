@@ -2,6 +2,9 @@ import BetterSqlite from 'better-sqlite3';
 import LibSqlite from '@libsql/sqlite3';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -18,16 +21,19 @@ try {
       const separator = fullUrl.includes('?') ? '&' : '?';
       fullUrl = `${fullUrl}${separator}authToken=${tursoToken.trim()}`;
     }
+    console.log('⚡ Connecting to Turso Remote Database:', tursoUrl.trim());
     db = new LibSqlite.Database(fullUrl);
     const testRow = db.prepare('SELECT 1 as test').get();
     if (!testRow || testRow.test !== 1) {
       throw new Error('Remote database query did not return valid result');
     }
+    console.log('✅ Successfully connected to Turso Remote Database!');
   } else {
+    console.warn('⚠️ TURSO_DATABASE_URL is missing. Using local SQLite (Data will reset on redeploy)!');
     db = new BetterSqlite(dbPath);
   }
 } catch (e) {
-  console.warn('Failed to connect to Turso remote DB, falling back to local SQLite:', e.message);
+  console.error('❌ Failed to connect to Turso remote DB, falling back to local SQLite:', e.message);
   db = new BetterSqlite(dbPath);
 }
 
