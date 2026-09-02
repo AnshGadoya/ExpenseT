@@ -20,7 +20,7 @@ const tursoToken = rawToken ? rawToken.trim().replace(/^["']|["']$/g, '') : '';
 let db;
 try {
   if (tursoUrl) {
-    let fullUrl = tursoUrl;
+    let fullUrl = tursoUrl.startsWith('libsql://') ? tursoUrl.replace('libsql://', 'https://') : tursoUrl;
     if (tursoToken && !fullUrl.includes('authToken=')) {
       const separator = fullUrl.includes('?') ? '&' : '?';
       fullUrl = `${fullUrl}${separator}authToken=${tursoToken}`;
