@@ -154,61 +154,55 @@ export function initDB() {
       FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
     );
   `);
-  // Seed default Services if empty
-  const serviceCount = db.prepare('SELECT COUNT(*) as count FROM services').get().count;
-  if (serviceCount === 0) {
-    const officialServices = [
-      // 1. Specialized Creative Solutions (Branding & Identity & Product Labels)
-      ['Professional Logo Design', 'Specialized Creative Solutions', 799, 'Custom vector logo design & high-res branding assets'],
-      ['Visiting Card Design', 'Specialized Creative Solutions', 399, 'Print-ready double-sided business card layout'],
-      ['Smart NFC Business Card', 'Specialized Creative Solutions', 349, 'Digital NFC tap business card setup & link profile'],
-      ['Label Design Front', 'Specialized Creative Solutions', 499, 'Front product label packaging design'],
-      ['Label Design Front & Back', 'Specialized Creative Solutions', 799, 'Complete front & back product label packaging design'],
+  // Seed default Services if missing
+  const officialServices = [
+    // 1. Specialized Creative Solutions (Branding & Identity & Product Labels)
+    ['Professional Logo Design', 'Specialized Creative Solutions', 799, 'Custom vector logo design & high-res branding assets'],
+    ['Visiting Card Design', 'Specialized Creative Solutions', 399, 'Print-ready double-sided business card layout'],
+    ['Smart NFC Business Card', 'Specialized Creative Solutions', 349, 'Digital NFC tap business card setup & link profile'],
+    ['Label Design Front', 'Specialized Creative Solutions', 499, 'Front product label packaging design'],
+    ['Label Design Front & Back', 'Specialized Creative Solutions', 799, 'Complete front & back product label packaging design'],
 
-      // Digital & Production
-      ['Website Development', 'Digital & Production', 9999, 'Starting @ ₹9,999 - Responsive business website / landing page'],
-      ['Video Shoot Creation', 'Digital & Production', 1499, '₹1,499 / Per Reel - Professional 4K video shoot & Reel creation'],
-      ['Quick Impact Marketing', 'Digital & Production', 499, '₹499 / 1 Day - 1-Day quick impact turnaround marketing campaign'],
+    // Digital & Production
+    ['Website Development', 'Digital & Production', 9999, 'Starting @ ₹9,999 - Responsive business website / landing page'],
+    ['Video Shoot Creation', 'Digital & Production', 1499, '₹1,499 / Per Reel - Professional 4K video shoot & Reel creation'],
+    ['Quick Impact Marketing', 'Digital & Production', 499, '₹499 / 1 Day - 1-Day quick impact turnaround marketing campaign'],
 
-      // Meta Ads & Performance
-      ['Meta Ads Service', 'Meta Ads & Performance', 6000, '₹6,000 / Month - Facebook & Instagram ad campaign setup, targeting & ROAS management (Ad spend extra)'],
-    ];
+    // Meta Ads & Performance
+    ['Meta Ads Service', 'Meta Ads & Performance', 6000, '₹6,000 / Month - Facebook & Instagram ad campaign setup, targeting & ROAS management (Ad spend extra)'],
+  ];
 
-    const insertService = db.prepare(`
-      INSERT INTO services (name, category, base_price, description)
-      VALUES (?, ?, ?, ?)
-    `);
+  const insertService = db.prepare(`
+    INSERT OR IGNORE INTO services (name, category, base_price, description)
+    VALUES (?, ?, ?, ?)
+  `);
 
-    for (const s of officialServices) {
-      insertService.run(s[0], s[1], s[2], s[3]);
-    }
+  for (const s of officialServices) {
+    insertService.run(s[0], s[1], s[2], s[3]);
   }
 
-  // Seed default Expense Categories if empty
-  const categoryCount = db.prepare('SELECT COUNT(*) as count FROM expense_categories').get().count;
-  if (categoryCount === 0) {
-    const insertCat = db.prepare(`
-      INSERT INTO expense_categories (name, icon, color, description)
-      VALUES (?, ?, ?, ?)
-    `);
+  // Seed default Expense Categories if missing
+  const insertCat = db.prepare(`
+    INSERT OR IGNORE INTO expense_categories (name, icon, color, description)
+    VALUES (?, ?, ?, ?)
+  `);
 
-    const defaultCategories = [
-      ['Food & Refreshments', 'utensils', '#f97316', 'Team snacks, client dinners, shoot day lunches & coffee'],
-      ['Travel & Commute', 'navigation', '#06b6d4', 'Auto, cab, metro, and local commute for shoots'],
-      ['Salesman Travel', 'briefcase', '#3b82f6', 'Client pitch travel, on-site sales meetings & client visits'],
-      ['Office Rent', 'building', '#8b5cf6', 'Monthly studio and office space rental'],
-      ['Fuel & Petrol', 'fuel', '#eab308', 'Vehicle fuel for field shoots and equipment transport'],
-      ['Party & Celebrations', 'party-popper', '#ec4899', 'Team milestones, festive parties, birthdays & agency outings'],
-      ['Software & Subscriptions', 'laptop', '#6366f1', 'Canva Pro, Adobe Premiere / After Effects, ChatGPT Plus, Midjourney, Hosting'],
-      ['Freelancers & Crew Payouts', 'users', '#10b981', 'Freelance cameramen, voiceover artists, scriptwriters, extra editors'],
-      ['Equipment & Studio Rental', 'camera', '#14b8a6', 'Lens rentals, studio lighting, gimbal, mic & tripod rentals'],
-      ['Office Utilities & Internet', 'wifi', '#64748b', 'High-speed broadband, electricity, drinking water, supplies'],
-      ['Meta Ads Ad-Spend', 'trending-up', '#f43f5e', 'Pre-funded client ad spend balance / agency testing budget']
-    ];
+  const defaultCategories = [
+    ['Food & Refreshments', 'utensils', '#f97316', 'Team snacks, client dinners, shoot day lunches & coffee'],
+    ['Travel & Commute', 'navigation', '#06b6d4', 'Auto, cab, metro, and local commute for shoots'],
+    ['Salesman Travel', 'briefcase', '#3b82f6', 'Client pitch travel, on-site sales meetings & client visits'],
+    ['Office Rent', 'building', '#8b5cf6', 'Monthly studio and office space rental'],
+    ['Fuel & Petrol', 'fuel', '#eab308', 'Vehicle fuel for field shoots and equipment transport'],
+    ['Party & Celebrations', 'party-popper', '#ec4899', 'Team milestones, festive parties, birthdays & agency outings'],
+    ['Software & Subscriptions', 'laptop', '#6366f1', 'Canva Pro, Adobe Premiere / After Effects, ChatGPT Plus, Midjourney, Hosting'],
+    ['Freelancers & Crew Payouts', 'users', '#10b981', 'Freelance cameramen, voiceover artists, scriptwriters, extra editors'],
+    ['Equipment & Studio Rental', 'camera', '#14b8a6', 'Lens rentals, studio lighting, gimbal, mic & tripod rentals'],
+    ['Office Utilities & Internet', 'wifi', '#64748b', 'High-speed broadband, electricity, drinking water, supplies'],
+    ['Meta Ads Ad-Spend', 'trending-up', '#f43f5e', 'Pre-funded client ad spend balance / agency testing budget']
+  ];
 
-    for (const c of defaultCategories) {
-      insertCat.run(c[0], c[1], c[2], c[3]);
-    }
+  for (const c of defaultCategories) {
+    insertCat.run(c[0], c[1], c[2], c[3]);
   }
 }
 
