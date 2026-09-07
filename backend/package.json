@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "start": "node index.js",
-    "dev": "node index.js"
+    "dev": "node index.js",
+    "migrate:mongo": "node scripts/migrate_sqlite_to_mongo.js"
   },
   "dependencies": {
     "@libsql/client": "^0.17.4",
@@ -14,6 +15,7 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
+    "mongoose": "^9.9.5",
     "morgan": "^1.10.0"
   }
 }

@@ -1,52 +1,23 @@
 import express from 'express';
 import cors from 'cors';
 import morgan from 'morgan';
-import db, { initDB } from './db.js';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+import connectDB from './db.js';
+import Service from './models/Service.js';
+import ExpenseCategory from './models/ExpenseCategory.js';
+import Expense from './models/Expense.js';
+import ClientDeal from './models/ClientDeal.js';
+import ClientPayment from './models/ClientPayment.js';
+import Employee from './models/Employee.js';
+import SalaryPayment from './models/SalaryPayment.js';
 
 const app = express();
 const PORT = process.env.PORT || 5050;
 
-
-// Initialize DB schema & seeds
-initDB();
-
-function getLastInsertId(info, tableName = '') {
-  if (info && info.lastInsertRowid !== undefined && info.lastInsertRowid !== null) {
-    return info.lastInsertRowid;
-  }
-  if (info && info.lastID !== undefined && info.lastID !== null) {
-    return info.lastID;
-  }
-  if (tableName) {
-    const row = db.prepare(`SELECT id FROM ${tableName} ORDER BY id DESC LIMIT 1`).get();
-    if (row && row.id) return row.id;
-  }
-  const lastRow = db.prepare('SELECT last_insert_rowid() as id').get();
-  return lastRow ? lastRow.id : null;
-}
-
-async function safeAll(stmt, ...params) {
-  try {
-    const res = params.length > 0 ? await stmt.all(...params) : await stmt.all();
-    if (Array.isArray(res)) return res;
-    if (res && Array.isArray(res.rows)) return Array.from(res.rows);
-    return [];
-  } catch (e) {
-    console.error('safeAll error:', e);
-    return [];
-  }
-}
-
-async function safeGet(stmt, ...params) {
-  try {
-    const res = params.length > 0 ? await stmt.get(...params) : await stmt.get();
-    if (res && res.rows && Array.isArray(res.rows)) return res.rows[0] || null;
-    return res || null;
-  } catch (e) {
-    console.error('safeGet error:', e);
-    return null;
-  }
-}
+// Initialize Database connection & seed defaults
+connectDB();
 
 app.use(cors({
   origin: '*',
@@ -58,7 +29,7 @@ app.use(morgan('dev'));
 
 // Health check
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', service: 'Gandhi Infosol Finance API', timestamp: new Date() });
+  res.json({ status: 'ok', service: 'Gandhi Infosol Finance API (MongoDB)', timestamp: new Date() });
 });
 
 // ==========================================
@@ -66,8 +37,8 @@ app.get('/api/health', (req, res) => {
 // ==========================================
 app.get('/api/services', async (req, res) => {
   try {
-    const services = await safeAll(db.prepare('SELECT * FROM services ORDER BY name ASC'));
-    res.json(services);
+    const services = await Service.find().sort({ name: 1 });
+    res.json(services.map(s => s.toJSON()));
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -79,16 +50,17 @@ app.post('/api/services', async (req, res) => {
     if (!name || !name.trim()) {
       return res.status(400).json({ error: 'Service name is required' });
     }
-    const stmt = db.prepare(`
-      INSERT INTO services (name, category, base_price, description, is_active)
-      VALUES (?, ?, ?, ?, 1)
-    `);
-    const info = await stmt.run(name.trim(), category || 'Digital Marketing', Number(base_price) || 0, description || '');
-    const insertedId = getLastInsertId(info, 'services');
-    const newService = await safeGet(db.prepare('SELECT * FROM services WHERE id = ?'), insertedId);
-    res.status(201).json(newService);
+    const newService = new Service({
+      name: name.trim(),
+      category: category || 'Digital Marketing',
+      base_price: Number(base_price) || 0,
+      description: description || '',
+      is_active: 1
+    });
+    await newService.save();
+    res.status(201).json(newService.toJSON());
   } catch (error) {
-    if (error.message && error.message.includes('UNIQUE constraint failed')) {
+    if (error.code === 11000 || (error.message && error.message.includes('duplicate key'))) {
       return res.status(400).json({ error: 'A service with this name already exists' });
     }
     res.status(500).json({ error: error.message });
@@ -99,14 +71,19 @@ app.put('/api/services/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const { name, category, base_price, description, is_active } = req.body;
-    const stmt = db.prepare(`
-      UPDATE services 
-      SET name = ?, category = ?, base_price = ?, description = ?, is_active = ?
-      WHERE id = ?
-    `);
-    await stmt.run(name.trim(), category || 'Digital Marketing', Number(base_price) || 0, description || '', is_active === undefined ? 1 : is_active ? 1 : 0, id);
-    const updated = await safeGet(db.prepare('SELECT * FROM services WHERE id = ?'), id);
-    res.json(updated);
+    const updated = await Service.findByIdAndUpdate(
+      id,
+      {
+        name: name ? name.trim() : undefined,
+        category: category || 'Digital Marketing',
+        base_price: Number(base_price) || 0,
+        description: description || '',
+        is_active: is_active === undefined ? 1 : is_active ? 1 : 0
+      },
+      { new: true }
+    );
+    if (!updated) return res.status(404).json({ error: 'Service not found' });
+    res.json(updated.toJSON());
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -115,12 +92,12 @@ app.put('/api/services/:id', async (req, res) => {
 app.delete('/api/services/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const inUse = await safeGet(db.prepare('SELECT COUNT(*) as count FROM deal_services WHERE service_id = ?'), id);
-    if (inUse && inUse.count > 0) {
-      await db.prepare('UPDATE services SET is_active = 0 WHERE id = ?').run(id);
+    const inUse = await ClientDeal.findOne({ 'services.service_id': id });
+    if (inUse) {
+      await Service.findByIdAndUpdate(id, { is_active: 0 });
       return res.json({ message: 'Service marked as inactive because it is linked to existing client deals', softDeleted: true });
     }
-    await db.prepare('DELETE FROM services WHERE id = ?').run(id);
+    await Service.findByIdAndDelete(id);
     res.json({ message: 'Service deleted successfully' });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -132,14 +109,21 @@ app.delete('/api/services/:id', async (req, res) => {
 // ==========================================
 app.get('/api/categories', async (req, res) => {
   try {
-    const categories = await safeAll(db.prepare(`
-      SELECT c.*, 
-        (SELECT COUNT(*) FROM expenses e WHERE e.category_id = c.id) as expense_count,
-        (SELECT COALESCE(SUM(amount), 0) FROM expenses e WHERE e.category_id = c.id) as total_spent
-      FROM expense_categories c
-      ORDER BY c.name ASC
-    `));
-    res.json(categories);
+    const categories = await ExpenseCategory.find().sort({ name: 1 });
+    const result = await Promise.all(categories.map(async (cat) => {
+      const expenseCount = await Expense.countDocuments({ category_id: cat._id });
+      const totalSpentAgg = await Expense.aggregate([
+        { $match: { category_id: cat._id } },
+        { $group: { _id: null, total: { $sum: '$amount' } } }
+      ]);
+      const totalSpent = totalSpentAgg[0] ? totalSpentAgg[0].total : 0;
+      return {
+        ...cat.toJSON(),
+        expense_count: expenseCount,
+        total_spent: totalSpent
+      };
+    }));
+    res.json(result);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -151,16 +135,17 @@ app.post('/api/categories', async (req, res) => {
     if (!name || !name.trim()) {
       return res.status(400).json({ error: 'Category name is required' });
     }
-    const stmt = db.prepare(`
-      INSERT INTO expense_categories (name, icon, color, description, is_active)
-      VALUES (?, ?, ?, ?, 1)
-    `);
-    const info = await stmt.run(name.trim(), icon || 'tag', color || '#3b82f6', description || '');
-    const insertedId = getLastInsertId(info, 'expense_categories');
-    const newCat = await safeGet(db.prepare('SELECT * FROM expense_categories WHERE id = ?'), insertedId);
-    res.status(201).json(newCat);
+    const newCat = new ExpenseCategory({
+      name: name.trim(),
+      icon: icon || 'tag',
+      color: color || '#3b82f6',
+      description: description || '',
+      is_active: 1
+    });
+    await newCat.save();
+    res.status(201).json(newCat.toJSON());
   } catch (error) {
-    if (error.message && error.message.includes('UNIQUE constraint failed')) {
+    if (error.code === 11000 || (error.message && error.message.includes('duplicate key'))) {
       return res.status(400).json({ error: 'A category with this name already exists' });
     }
     res.status(500).json({ error: error.message });
@@ -171,14 +156,19 @@ app.put('/api/categories/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const { name, icon, color, description, is_active } = req.body;
-    const stmt = db.prepare(`
-      UPDATE expense_categories 
-      SET name = ?, icon = ?, color = ?, description = ?, is_active = ?
-      WHERE id = ?
-    `);
-    await stmt.run(name.trim(), icon || 'tag', color || '#3b82f6', description || '', is_active === undefined ? 1 : is_active ? 1 : 0, id);
-    const updated = await safeGet(db.prepare('SELECT * FROM expense_categories WHERE id = ?'), id);
-    res.json(updated);
+    const updated = await ExpenseCategory.findByIdAndUpdate(
+      id,
+      {
+        name: name ? name.trim() : undefined,
+        icon: icon || 'tag',
+        color: color || '#3b82f6',
+        description: description || '',
+        is_active: is_active === undefined ? 1 : is_active ? 1 : 0
+      },
+      { new: true }
+    );
+    if (!updated) return res.status(404).json({ error: 'Category not found' });
+    res.json(updated.toJSON());
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -187,12 +177,12 @@ app.put('/api/categories/:id', async (req, res) => {
 app.delete('/api/categories/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const inUse = await safeGet(db.prepare('SELECT COUNT(*) as count FROM expenses WHERE category_id = ?'), id);
-    if (inUse && inUse.count > 0) {
-      await db.prepare('UPDATE expense_categories SET is_active = 0 WHERE id = ?').run(id);
+    const inUse = await Expense.findOne({ category_id: id });
+    if (inUse) {
+      await ExpenseCategory.findByIdAndUpdate(id, { is_active: 0 });
       return res.json({ message: 'Category deactivated as it contains logged expenses', softDeleted: true });
     }
-    await db.prepare('DELETE FROM expense_categories WHERE id = ?').run(id);
+    await ExpenseCategory.findByIdAndDelete(id);
     res.json({ message: 'Category deleted successfully' });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -205,39 +195,42 @@ app.delete('/api/categories/:id', async (req, res) => {
 app.get('/api/expenses', async (req, res) => {
   try {
     const { search, category_id, payment_mode, start_date, end_date } = req.query;
-    let query = `
-      SELECT e.*, c.name as category_name, c.color as category_color, c.icon as category_icon
-      FROM expenses e
-      JOIN expense_categories c ON e.category_id = c.id
-      WHERE 1=1
-    `;
-    const params = [];
+    const query = {};
 
     if (category_id) {
-      query += ' AND e.category_id = ?';
-      params.push(category_id);
+      query.category_id = category_id;
     }
     if (payment_mode) {
-      query += ' AND e.payment_mode = ?';
-      params.push(payment_mode);
+      query.payment_mode = payment_mode;
     }
-    if (start_date) {
-      query += ' AND e.expense_date >= ?';
-      params.push(start_date);
-    }
-    if (end_date) {
-      query += ' AND e.expense_date <= ?';
-      params.push(end_date);
+    if (start_date || end_date) {
+      query.expense_date = {};
+      if (start_date) query.expense_date.$gte = start_date;
+      if (end_date) query.expense_date.$lte = end_date;
     }
     if (search) {
-      query += ' AND (e.description LIKE ? OR e.paid_to LIKE ? OR c.name LIKE ? OR e.receipt_no LIKE ?)';
-      const s = `%${search}%`;
-      params.push(s, s, s, s);
+      const regex = new RegExp(search, 'i');
+      query.$or = [
+        { description: regex },
+        { paid_to: regex },
+        { receipt_no: regex }
+      ];
     }
 
-    query += ' ORDER BY e.expense_date DESC, e.id DESC';
-    const expenses = await safeAll(db.prepare(query), ...params);
-    res.json(expenses);
+    const expenses = await Expense.find(query).populate('category_id').sort({ expense_date: -1, _id: -1 });
+
+    const formatted = expenses.map(e => e.toJSON());
+    if (search) {
+      const regex = new RegExp(search, 'i');
+      // Also filter by category_name if specified search matches
+      return res.json(formatted.filter(e => 
+        regex.test(e.description) || 
+        regex.test(e.paid_to || '') || 
+        regex.test(e.receipt_no || '') || 
+        regex.test(e.category_name || '')
+      ));
+    }
+    res.json(formatted);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -249,29 +242,18 @@ app.post('/api/expenses', async (req, res) => {
     if (!category_id || !amount || !expense_date || !description) {
       return res.status(400).json({ error: 'Category, amount, date, and description are required' });
     }
-    const stmt = db.prepare(`
-      INSERT INTO expenses (category_id, amount, expense_date, payment_mode, description, paid_to, receipt_no)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `);
-    const info = await stmt.run(
+    const newExpense = new Expense({
       category_id,
-      Number(amount),
+      amount: Number(amount),
       expense_date,
-      payment_mode || 'UPI',
-      description.trim(),
-      paid_to ? paid_to.trim() : null,
-      receipt_no ? receipt_no.trim() : null
-    );
-
-    const insertedId = getLastInsertId(info, 'expenses');
-    const created = await safeGet(db.prepare(`
-      SELECT e.*, c.name as category_name, c.color as category_color, c.icon as category_icon
-      FROM expenses e
-      JOIN expense_categories c ON e.category_id = c.id
-      WHERE e.id = ?
-    `), insertedId);
-
-    res.status(201).json(created);
+      payment_mode: payment_mode || 'UPI',
+      description: description.trim(),
+      paid_to: paid_to ? paid_to.trim() : null,
+      receipt_no: receipt_no ? receipt_no.trim() : null
+    });
+    await newExpense.save();
+    const populated = await Expense.findById(newExpense._id).populate('category_id');
+    res.status(201).json(populated.toJSON());
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -281,30 +263,21 @@ app.put('/api/expenses/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const { category_id, amount, expense_date, payment_mode, description, paid_to, receipt_no } = req.body;
-    const stmt = db.prepare(`
-      UPDATE expenses 
-      SET category_id = ?, amount = ?, expense_date = ?, payment_mode = ?, description = ?, paid_to = ?, receipt_no = ?
-      WHERE id = ?
-    `);
-    await stmt.run(
-      category_id,
-      Number(amount),
-      expense_date,
-      payment_mode || 'UPI',
-      description.trim(),
-      paid_to ? paid_to.trim() : null,
-      receipt_no ? receipt_no.trim() : null,
-      id
-    );
-
-    const updated = await safeGet(db.prepare(`
-      SELECT e.*, c.name as category_name, c.color as category_color, c.icon as category_icon
-      FROM expenses e
-      JOIN expense_categories c ON e.category_id = c.id
-      WHERE e.id = ?
-    `), id);
-
-    res.json(updated);
+    const updated = await Expense.findByIdAndUpdate(
+      id,
+      {
+        category_id,
+        amount: Number(amount),
+        expense_date,
+        payment_mode: payment_mode || 'UPI',
+        description: description ? description.trim() : undefined,
+        paid_to: paid_to ? paid_to.trim() : null,
+        receipt_no: receipt_no ? receipt_no.trim() : null
+      },
+      { new: true }
+    ).populate('category_id');
+    if (!updated) return res.status(404).json({ error: 'Expense not found' });
+    res.json(updated.toJSON());
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -313,7 +286,7 @@ app.put('/api/expenses/:id', async (req, res) => {
 app.delete('/api/expenses/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    await db.prepare('DELETE FROM expenses WHERE id = ?').run(id);
+    await Expense.findByIdAndDelete(id);
     res.json({ message: 'Expense deleted successfully' });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -326,50 +299,36 @@ app.delete('/api/expenses/:id', async (req, res) => {
 app.get('/api/deals', async (req, res) => {
   try {
     const { search, status, start_date, end_date } = req.query;
-    let query = `
-      SELECT d.* 
-      FROM client_deals d
-      WHERE 1=1
-    `;
-    const params = [];
+    const query = {};
 
     if (status && status !== 'all') {
-      query += ' AND d.status = ?';
-      params.push(status);
+      query.status = status;
     }
-    if (start_date) {
-      query += ' AND d.deal_date >= ?';
-      params.push(start_date);
-    }
-    if (end_date) {
-      query += ' AND d.deal_date <= ?';
-      params.push(end_date);
+    if (start_date || end_date) {
+      query.deal_date = {};
+      if (start_date) query.deal_date.$gte = start_date;
+      if (end_date) query.deal_date.$lte = end_date;
     }
     if (search) {
-      query += ' AND (d.client_name LIKE ? OR d.company_name LIKE ? OR d.client_phone LIKE ? OR d.insta_id LIKE ? OR d.notes LIKE ?)';
-      const s = `%${search}%`;
-      params.push(s, s, s, s, s);
+      const regex = new RegExp(search, 'i');
+      query.$or = [
+        { client_name: regex },
+        { company_name: regex },
+        { client_phone: regex },
+        { insta_id: regex },
+        { notes: regex }
+      ];
     }
 
-    query += ' ORDER BY d.deal_date DESC, d.id DESC';
-    const deals = await safeAll(db.prepare(query), ...params);
+    const deals = await ClientDeal.find(query).sort({ deal_date: -1, _id: -1 });
 
-    const getServices = db.prepare(`
-      SELECT ds.*, s.name as service_name, s.category as service_category
-      FROM deal_services ds
-      JOIN services s ON ds.service_id = s.id
-      WHERE ds.deal_id = ?
-    `);
-
-    const getPayments = db.prepare(`
-      SELECT * FROM client_payments WHERE deal_id = ? ORDER BY payment_date DESC, id DESC
-    `);
-
-    const fullDeals = await Promise.all(deals.map(async (deal) => ({
-      ...deal,
-      services: await safeAll(getServices, deal.id),
-      payments: await safeAll(getPayments, deal.id)
-    })));
+    const fullDeals = await Promise.all(deals.map(async (deal) => {
+      const payments = await ClientPayment.find({ deal_id: deal._id }).sort({ payment_date: -1, _id: -1 });
+      return {
+        ...deal.toJSON(),
+        payments: payments.map(p => p.toJSON())
+      };
+    }));
 
     res.json(fullDeals);
   } catch (error) {
@@ -380,23 +339,16 @@ app.get('/api/deals', async (req, res) => {
 app.get('/api/deals/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const deal = await safeGet(db.prepare('SELECT * FROM client_deals WHERE id = ?'), id);
+    const deal = await ClientDeal.findById(id);
     if (!deal) {
       return res.status(404).json({ error: 'Deal not found' });
     }
 
-    const services = await safeAll(db.prepare(`
-      SELECT ds.*, s.name as service_name, s.category as service_category
-      FROM deal_services ds
-      JOIN services s ON ds.service_id = s.id
-      WHERE ds.deal_id = ?
-    `), id);
-
-    const payments = await safeAll(db.prepare(`
-      SELECT * FROM client_payments WHERE deal_id = ? ORDER BY payment_date DESC, id DESC
-    `), id);
-
-    res.json({ ...deal, services, payments });
+    const payments = await ClientPayment.find({ deal_id: deal._id }).sort({ payment_date: -1, _id: -1 });
+    res.json({
+      ...deal.toJSON(),
+      payments: payments.map(p => p.toJSON())
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -438,63 +390,56 @@ app.post('/api/deals', async (req, res) => {
       computedExpiry = d.toISOString().split('T')[0];
     }
 
-    const dealStmt = db.prepare(`
-      INSERT INTO client_deals (client_name, client_phone, client_email, company_name, insta_id, deal_date, duration_months, expiry_date, total_deal_amount, received_amount, pending_amount, status, notes)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-    const dealInfo = await dealStmt.run(
-      client_name.trim(),
-      client_phone ? client_phone.trim() : null,
-      client_email ? client_email.trim() : null,
-      company_name ? company_name.trim() : null,
-      insta_id ? insta_id.trim() : null,
-      deal_date,
-      durMonths,
-      computedExpiry,
-      totalAmount,
-      initialPaid,
-      pendingAmount,
-      status,
-      notes ? notes.trim() : null
-    );
-
-    const dealId = getLastInsertId(dealInfo, 'client_deals');
-
+    const formattedServices = [];
     if (Array.isArray(services) && services.length > 0) {
-      const dsStmt = db.prepare(`
-        INSERT INTO deal_services (deal_id, service_id, service_name, agreed_price)
-        VALUES (?, ?, ?, ?)
-      `);
       for (const s of services) {
         const serviceId = typeof s === 'object' ? s.service_id : s;
         const agreedPrice = typeof s === 'object' && s.agreed_price ? Number(s.agreed_price) : 0;
-        const serviceData = await safeGet(db.prepare('SELECT name FROM services WHERE id = ?'), serviceId);
-        await dsStmt.run(dealId, serviceId, serviceData ? serviceData.name : 'Custom Service', agreedPrice);
+        const serviceData = await Service.findById(serviceId);
+        formattedServices.push({
+          service_id: serviceId,
+          service_name: serviceData ? serviceData.name : 'Custom Service',
+          agreed_price: agreedPrice
+        });
       }
     }
 
+    const newDeal = new ClientDeal({
+      client_name: client_name.trim(),
+      client_phone: client_phone ? client_phone.trim() : null,
+      client_email: client_email ? client_email.trim() : null,
+      company_name: company_name ? company_name.trim() : null,
+      insta_id: insta_id ? insta_id.trim() : null,
+      deal_date,
+      duration_months: durMonths,
+      expiry_date: computedExpiry,
+      total_deal_amount: totalAmount,
+      received_amount: initialPaid,
+      pending_amount: pendingAmount,
+      status,
+      notes: notes ? notes.trim() : null,
+      services: formattedServices
+    });
+    await newDeal.save();
+
     if (initialPaid > 0) {
-      const payStmt = db.prepare(`
-        INSERT INTO client_payments (deal_id, amount, payment_date, payment_mode, reference_no, notes)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `);
-      await payStmt.run(
-        dealId,
-        initialPaid,
-        deal_date,
-        payment_mode || 'UPI',
-        payment_reference || null,
-        'Initial advance payment'
-      );
+      const payRecord = new ClientPayment({
+        deal_id: newDeal._id,
+        amount: initialPaid,
+        payment_date: deal_date,
+        payment_mode: payment_mode || 'UPI',
+        reference_no: payment_reference || null,
+        notes: 'Initial advance payment'
+      });
+      await payRecord.save();
     }
 
-    const createdDeal = await safeGet(db.prepare('SELECT * FROM client_deals WHERE id = ?'), dealId);
-    const linkedServices = await safeAll(db.prepare(`
-      SELECT ds.*, s.name as service_name FROM deal_services ds JOIN services s ON ds.service_id = s.id WHERE ds.deal_id = ?
-    `), dealId);
-    const payments = await safeAll(db.prepare('SELECT * FROM client_payments WHERE deal_id = ?'), dealId);
+    const payments = await ClientPayment.find({ deal_id: newDeal._id });
 
-    res.status(201).json({ ...createdDeal, services: linkedServices, payments });
+    res.status(201).json({
+      ...newDeal.toJSON(),
+      payments: payments.map(p => p.toJSON())
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -518,7 +463,7 @@ app.put('/api/deals/:id', async (req, res) => {
       services
     } = req.body;
 
-    const currentDeal = await safeGet(db.prepare('SELECT * FROM client_deals WHERE id = ?'), id);
+    const currentDeal = await ClientDeal.findById(id);
     if (!currentDeal) {
       return res.status(404).json({ error: 'Deal not found' });
     }
@@ -540,47 +485,43 @@ app.put('/api/deals/:id', async (req, res) => {
       computedExpiry = d.toISOString().split('T')[0];
     }
 
-    await db.prepare(`
-      UPDATE client_deals
-      SET client_name = ?, client_phone = ?, client_email = ?, company_name = ?, insta_id = ?, deal_date = ?, duration_months = ?, expiry_date = ?, total_deal_amount = ?, pending_amount = ?, status = ?, notes = ?
-      WHERE id = ?
-    `).run(
-      client_name ? client_name.trim() : currentDeal.client_name,
-      client_phone !== undefined ? client_phone : currentDeal.client_phone,
-      client_email !== undefined ? client_email : currentDeal.client_email,
-      company_name !== undefined ? company_name : currentDeal.company_name,
-      insta_id !== undefined ? (insta_id ? insta_id.trim() : null) : currentDeal.insta_id,
-      activeDealDate,
-      durMonths,
-      computedExpiry,
-      totalAmount,
-      pendingAmount,
-      updatedStatus,
-      notes !== undefined ? notes : currentDeal.notes,
-      id
-    );
-
+    let formattedServices = currentDeal.services;
     if (Array.isArray(services)) {
-      await db.prepare('DELETE FROM deal_services WHERE deal_id = ?').run(id);
-      const dsStmt = db.prepare(`
-        INSERT INTO deal_services (deal_id, service_id, service_name, agreed_price)
-        VALUES (?, ?, ?, ?)
-      `);
+      formattedServices = [];
       for (const s of services) {
         const serviceId = typeof s === 'object' ? s.service_id : s;
         const agreedPrice = typeof s === 'object' && s.agreed_price ? Number(s.agreed_price) : 0;
-        const serviceData = await safeGet(db.prepare('SELECT name FROM services WHERE id = ?'), serviceId);
-        await dsStmt.run(id, serviceId, serviceData ? serviceData.name : 'Custom Service', agreedPrice);
+        const serviceData = await Service.findById(serviceId);
+        formattedServices.push({
+          service_id: serviceId,
+          service_name: serviceData ? serviceData.name : 'Custom Service',
+          agreed_price: agreedPrice
+        });
       }
     }
 
-    const updatedDeal = await safeGet(db.prepare('SELECT * FROM client_deals WHERE id = ?'), id);
-    const linkedServices = await safeAll(db.prepare(`
-      SELECT ds.*, s.name as service_name FROM deal_services ds JOIN services s ON ds.service_id = s.id WHERE ds.deal_id = ?
-    `), id);
-    const payments = await safeAll(db.prepare('SELECT * FROM client_payments WHERE deal_id = ?'), id);
+    currentDeal.client_name = client_name ? client_name.trim() : currentDeal.client_name;
+    currentDeal.client_phone = client_phone !== undefined ? client_phone : currentDeal.client_phone;
+    currentDeal.client_email = client_email !== undefined ? client_email : currentDeal.client_email;
+    currentDeal.company_name = company_name !== undefined ? company_name : currentDeal.company_name;
+    currentDeal.insta_id = insta_id !== undefined ? (insta_id ? insta_id.trim() : null) : currentDeal.insta_id;
+    currentDeal.deal_date = activeDealDate;
+    currentDeal.duration_months = durMonths;
+    currentDeal.expiry_date = computedExpiry;
+    currentDeal.total_deal_amount = totalAmount;
+    currentDeal.pending_amount = pendingAmount;
+    currentDeal.status = updatedStatus;
+    currentDeal.notes = notes !== undefined ? notes : currentDeal.notes;
+    currentDeal.services = formattedServices;
 
-    res.json({ ...updatedDeal, services: linkedServices, payments });
+    await currentDeal.save();
+
+    const payments = await ClientPayment.find({ deal_id: currentDeal._id });
+
+    res.json({
+      ...currentDeal.toJSON(),
+      payments: payments.map(p => p.toJSON())
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -589,7 +530,8 @@ app.put('/api/deals/:id', async (req, res) => {
 app.delete('/api/deals/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    await db.prepare('DELETE FROM client_deals WHERE id = ?').run(id);
+    await ClientDeal.findByIdAndDelete(id);
+    await ClientPayment.deleteMany({ deal_id: id });
     res.json({ message: 'Deal deleted successfully' });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -607,34 +549,40 @@ app.post('/api/deals/:id/payments', async (req, res) => {
     }
 
     const payAmount = Number(amount);
-    const deal = await safeGet(db.prepare('SELECT * FROM client_deals WHERE id = ?'), id);
+    const deal = await ClientDeal.findById(id);
     if (!deal) {
       return res.status(404).json({ error: 'Deal not found' });
     }
 
-    await db.prepare(`
-      INSERT INTO client_payments (deal_id, amount, payment_date, payment_mode, reference_no, notes)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run(id, payAmount, payment_date, payment_mode || 'UPI', reference_no || null, notes ? notes.trim() : null);
+    const newPayment = new ClientPayment({
+      deal_id: id,
+      amount: payAmount,
+      payment_date,
+      payment_mode: payment_mode || 'UPI',
+      reference_no: reference_no || null,
+      notes: notes ? notes.trim() : null
+    });
+    await newPayment.save();
 
-    const totalRecRow = await safeGet(db.prepare('SELECT SUM(amount) as total FROM client_payments WHERE deal_id = ?'), id);
-    const totalRec = totalRecRow?.total || 0;
+    const paymentsAgg = await ClientPayment.aggregate([
+      { $match: { deal_id: deal._id } },
+      { $group: { _id: null, total: { $sum: '$amount' } } }
+    ]);
+    const totalRec = paymentsAgg[0] ? paymentsAgg[0].total : 0;
     const newPending = Math.max(0, deal.total_deal_amount - totalRec);
     const newStatus = newPending === 0 ? 'completed' : 'active';
 
-    await db.prepare(`
-      UPDATE client_deals
-      SET received_amount = ?, pending_amount = ?, status = ?
-      WHERE id = ?
-    `).run(totalRec, newPending, newStatus, id);
+    deal.received_amount = totalRec;
+    deal.pending_amount = newPending;
+    deal.status = newStatus;
+    await deal.save();
 
-    const updatedDeal = await safeGet(db.prepare('SELECT * FROM client_deals WHERE id = ?'), id);
-    const payments = await safeAll(db.prepare('SELECT * FROM client_payments WHERE deal_id = ? ORDER BY payment_date DESC, id DESC'), id);
+    const payments = await ClientPayment.find({ deal_id: id }).sort({ payment_date: -1, _id: -1 });
 
     res.status(201).json({
       message: 'Payment recorded successfully',
-      deal: updatedDeal,
-      payments,
+      deal: deal.toJSON(),
+      payments: payments.map(p => p.toJSON()),
       totalRec,
       newPending,
       newStatus
@@ -647,25 +595,28 @@ app.post('/api/deals/:id/payments', async (req, res) => {
 app.delete('/api/deals/payments/:paymentId', async (req, res) => {
   try {
     const { paymentId } = req.params;
-    const payment = await safeGet(db.prepare('SELECT * FROM client_payments WHERE id = ?'), paymentId);
+    const payment = await ClientPayment.findById(paymentId);
     if (!payment) {
       return res.status(404).json({ error: 'Payment record not found' });
     }
 
     const dealId = payment.deal_id;
-    await db.prepare('DELETE FROM client_payments WHERE id = ?').run(paymentId);
+    await ClientPayment.findByIdAndDelete(paymentId);
 
-    const totalRecRow = await safeGet(db.prepare('SELECT COALESCE(SUM(amount), 0) as total FROM client_payments WHERE deal_id = ?'), dealId);
-    const totalRec = totalRecRow?.total || 0;
-    const deal = await safeGet(db.prepare('SELECT total_deal_amount FROM client_deals WHERE id = ?'), dealId);
-    const newPending = Math.max(0, deal.total_deal_amount - totalRec);
-    const newStatus = newPending === 0 ? 'completed' : 'active';
-
-    await db.prepare(`
-      UPDATE client_deals
-      SET received_amount = ?, pending_amount = ?, status = ?
-      WHERE id = ?
-    `).run(totalRec, newPending, newStatus, dealId);
+    const paymentsAgg = await ClientPayment.aggregate([
+      { $match: { deal_id: dealId } },
+      { $group: { _id: null, total: { $sum: '$amount' } } }
+    ]);
+    const totalRec = paymentsAgg[0] ? paymentsAgg[0].total : 0;
+    const deal = await ClientDeal.findById(dealId);
+    if (deal) {
+      const newPending = Math.max(0, deal.total_deal_amount - totalRec);
+      const newStatus = newPending === 0 ? 'completed' : 'active';
+      deal.received_amount = totalRec;
+      deal.pending_amount = newPending;
+      deal.status = newStatus;
+      await deal.save();
+    }
 
     res.json({ message: 'Payment record deleted and deal balance recalculated' });
   } catch (error) {
@@ -677,7 +628,7 @@ app.put('/api/deals/:id/lost', async (req, res) => {
   try {
     const { id } = req.params;
     const { loss_reason } = req.body;
-    const deal = await safeGet(db.prepare('SELECT * FROM client_deals WHERE id = ?'), id);
+    const deal = await ClientDeal.findById(id);
     if (!deal) {
       return res.status(404).json({ error: 'Deal not found' });
     }
@@ -687,14 +638,11 @@ app.put('/api/deals/:id/lost', async (req, res) => {
       ? `[LOST DEAL / BAD DEBT - ${new Date().toLocaleDateString('en-IN')}: ${reasonText}] \n${deal.notes}`
       : `[LOST DEAL / BAD DEBT - ${new Date().toLocaleDateString('en-IN')}: ${reasonText}]`;
 
-    await db.prepare(`
-      UPDATE client_deals
-      SET status = 'lost', notes = ?
-      WHERE id = ?
-    `).run(updatedNotes, id);
+    deal.status = 'lost';
+    deal.notes = updatedNotes;
+    await deal.save();
 
-    const updated = await safeGet(db.prepare('SELECT * FROM client_deals WHERE id = ?'), id);
-    res.json(updated);
+    res.json(deal.toJSON());
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -703,7 +651,7 @@ app.put('/api/deals/:id/lost', async (req, res) => {
 app.put('/api/deals/:id/restore', async (req, res) => {
   try {
     const { id } = req.params;
-    const deal = await safeGet(db.prepare('SELECT * FROM client_deals WHERE id = ?'), id);
+    const deal = await ClientDeal.findById(id);
     if (!deal) {
       return res.status(404).json({ error: 'Deal not found' });
     }
@@ -713,14 +661,11 @@ app.put('/api/deals/:id/restore', async (req, res) => {
       ? `[RESTORED ACTIVE DEAL - ${new Date().toLocaleDateString('en-IN')}] \n${deal.notes}`
       : `[RESTORED ACTIVE DEAL - ${new Date().toLocaleDateString('en-IN')}]`;
 
-    await db.prepare(`
-      UPDATE client_deals
-      SET status = ?, notes = ?
-      WHERE id = ?
-    `).run(newStatus, updatedNotes, id);
+    deal.status = newStatus;
+    deal.notes = updatedNotes;
+    await deal.save();
 
-    const updated = await safeGet(db.prepare('SELECT * FROM client_deals WHERE id = ?'), id);
-    res.json(updated);
+    res.json(deal.toJSON());
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -730,7 +675,7 @@ app.put('/api/deals/:id/close', async (req, res) => {
   try {
     const { id } = req.params;
     const { close_reason } = req.body || {};
-    const deal = await safeGet(db.prepare('SELECT * FROM client_deals WHERE id = ?'), id);
+    const deal = await ClientDeal.findById(id);
     if (!deal) {
       return res.status(404).json({ error: 'Deal not found' });
     }
@@ -746,14 +691,11 @@ app.put('/api/deals/:id/close', async (req, res) => {
       ? `[CONTRACT CLOSED - ${new Date().toLocaleDateString('en-IN')}: ${reasonText}] \n${deal.notes}`
       : `[CONTRACT CLOSED - ${new Date().toLocaleDateString('en-IN')}: ${reasonText}]`;
 
-    await db.prepare(`
-      UPDATE client_deals
-      SET status = 'completed', notes = ?
-      WHERE id = ?
-    `).run(updatedNotes, id);
+    deal.status = 'completed';
+    deal.notes = updatedNotes;
+    await deal.save();
 
-    const updated = await safeGet(db.prepare('SELECT * FROM client_deals WHERE id = ?'), id);
-    res.json(updated);
+    res.json(deal.toJSON());
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -766,161 +708,210 @@ app.get('/api/analytics/summary', async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
     
-    let expDateFilter = 'WHERE 1=1';
-    let payDateFilter = 'WHERE 1=1';
-    let dealDateFilter = 'WHERE 1=1';
-    const expParams = [];
-    const payParams = [];
-    const dealParams = [];
+    const expQuery = {};
+    const payQuery = {};
+    const dealQuery = {};
+    const salQuery = {};
 
-    if (startDate) {
-      expDateFilter += ' AND e.expense_date >= ?';
-      expParams.push(startDate);
-      payDateFilter += ' AND p.payment_date >= ?';
-      payParams.push(startDate);
-      dealDateFilter += ' AND d.deal_date >= ?';
-      dealParams.push(startDate);
+    if (startDate || endDate) {
+      expQuery.expense_date = {};
+      payQuery.payment_date = {};
+      dealQuery.deal_date = {};
+      salQuery.payment_date = {};
+
+      if (startDate) {
+        expQuery.expense_date.$gte = startDate;
+        payQuery.payment_date.$gte = startDate;
+        dealQuery.deal_date.$gte = startDate;
+        salQuery.payment_date.$gte = startDate;
+      }
+      if (endDate) {
+        expQuery.expense_date.$lte = endDate;
+        payQuery.payment_date.$lte = endDate;
+        dealQuery.deal_date.$lte = endDate;
+        salQuery.payment_date.$lte = endDate;
+      }
     }
-    if (endDate) {
-      expDateFilter += ' AND e.expense_date <= ?';
-      expParams.push(endDate);
-      payDateFilter += ' AND p.payment_date <= ?';
-      payParams.push(endDate);
-      dealDateFilter += ' AND d.deal_date <= ?';
-      dealParams.push(endDate);
-    }
 
-    const totalRegularExpensesRow = await safeGet(db.prepare(`
-      SELECT COALESCE(SUM(amount), 0) as total FROM expenses e ${expDateFilter}
-    `), ...expParams);
-    const salDateFilter = expDateFilter.replace(/e\.expense_date/g, 'sp.payment_date');
-    const totalSalaryExpensesRow = await safeGet(db.prepare(`
-      SELECT COALESCE(SUM(amount), 0) as total FROM salary_payments sp WHERE 1=1 ${salDateFilter.replace('WHERE', 'AND')}
-    `), ...expParams);
+    const totalRegularExpensesAgg = await Expense.aggregate([
+      { $match: expQuery },
+      { $group: { _id: null, total: { $sum: '$amount' } } }
+    ]);
+    const totalRegularExpenses = totalRegularExpensesAgg[0] ? totalRegularExpensesAgg[0].total : 0;
 
-    const totalExpenses = (totalRegularExpensesRow ? totalRegularExpensesRow.total : 0) + (totalSalaryExpensesRow ? totalSalaryExpensesRow.total : 0);
+    const totalSalaryExpensesAgg = await SalaryPayment.aggregate([
+      { $match: salQuery },
+      { $group: { _id: null, total: { $sum: '$amount' } } }
+    ]);
+    const totalSalaryExpenses = totalSalaryExpensesAgg[0] ? totalSalaryExpensesAgg[0].total : 0;
 
-    const totalRevenueRow = await safeGet(db.prepare(`
-      SELECT COALESCE(SUM(amount), 0) as total FROM client_payments p ${payDateFilter}
-    `), ...payParams);
-    const totalRevenue = totalRevenueRow ? totalRevenueRow.total : 0;
+    const totalExpenses = totalRegularExpenses + totalSalaryExpenses;
 
-    const totalDealsRow = await safeGet(db.prepare(`
-      SELECT COALESCE(SUM(total_deal_amount), 0) as total, COUNT(*) as count FROM client_deals d ${dealDateFilter}
-    `), ...dealParams);
-    const totalDealVolume = totalDealsRow ? totalDealsRow.total : 0;
-    const totalDealsCount = totalDealsRow ? totalDealsRow.count : 0;
+    const totalRevenueAgg = await ClientPayment.aggregate([
+      { $match: payQuery },
+      { $group: { _id: null, total: { $sum: '$amount' } } }
+    ]);
+    const totalRevenue = totalRevenueAgg[0] ? totalRevenueAgg[0].total : 0;
 
-    const receivablesRow = await safeGet(db.prepare(`
-      SELECT COALESCE(SUM(pending_amount), 0) as total, COUNT(*) as count 
-      FROM client_deals 
-      WHERE pending_amount > 0 AND status = 'active'
-    `));
-    const totalReceivables = receivablesRow ? receivablesRow.total : 0;
-    const pendingDealsCount = receivablesRow ? receivablesRow.count : 0;
+    const totalDealsAgg = await ClientDeal.aggregate([
+      { $match: dealQuery },
+      { $group: { _id: null, total: { $sum: '$total_deal_amount' }, count: { $sum: 1 } } }
+    ]);
+    const totalDealVolume = totalDealsAgg[0] ? totalDealsAgg[0].total : 0;
+    const totalDealsCount = totalDealsAgg[0] ? totalDealsAgg[0].count : 0;
 
-    const lostRow = await safeGet(db.prepare(`
-      SELECT COALESCE(SUM(pending_amount), 0) as total_lost, COUNT(*) as count 
-      FROM client_deals 
-      WHERE status = 'lost'
-    `));
-    const totalLostAmount = lostRow ? lostRow.total_lost : 0;
-    const lostDealsCount = lostRow ? lostRow.count : 0;
+    const receivablesAgg = await ClientDeal.aggregate([
+      { $match: { pending_amount: { $gt: 0 }, status: 'active' } },
+      { $group: { _id: null, total: { $sum: '$pending_amount' }, count: { $sum: 1 } } }
+    ]);
+    const totalReceivables = receivablesAgg[0] ? receivablesAgg[0].total : 0;
+    const pendingDealsCount = receivablesAgg[0] ? receivablesAgg[0].count : 0;
+
+    const lostAgg = await ClientDeal.aggregate([
+      { $match: { status: 'lost' } },
+      { $group: { _id: null, total: { $sum: '$pending_amount' }, count: { $sum: 1 } } }
+    ]);
+    const totalLostAmount = lostAgg[0] ? lostAgg[0].total : 0;
+    const lostDealsCount = lostAgg[0] ? lostAgg[0].count : 0;
 
     const netProfit = totalRevenue - totalExpenses;
     const profitMargin = totalRevenue > 0 ? ((netProfit / totalRevenue) * 100).toFixed(1) : 0;
 
-    const categoryStats = await safeAll(db.prepare(`
-      SELECT c.id, c.name, c.color, c.icon, COALESCE(SUM(e.amount), 0) as total_amount, COUNT(e.id) as count
-      FROM expense_categories c
-      JOIN expenses e ON e.category_id = c.id
-      ${expDateFilter}
-      GROUP BY c.id, c.name, c.color, c.icon
-      HAVING total_amount > 0
-      ORDER BY total_amount DESC
-    `), ...expParams);
+    const categoryStatsAgg = await Expense.aggregate([
+      { $match: expQuery },
+      { $group: { _id: '$category_id', total_amount: { $sum: '$amount' }, count: { $sum: 1 } } },
+      { $sort: { total_amount: -1 } }
+    ]);
 
-    const categoryBreakdown = categoryStats.map(c => ({
-      ...c,
-      percentage: totalExpenses > 0 ? ((c.total_amount / totalExpenses) * 100).toFixed(1) : 0
+    const categoryBreakdown = await Promise.all(categoryStatsAgg.map(async (stat) => {
+      const cat = await ExpenseCategory.findById(stat._id);
+      return {
+        id: stat._id ? stat._id.toString() : '',
+        name: cat ? cat.name : 'Unknown Category',
+        color: cat ? cat.color : '#3b82f6',
+        icon: cat ? cat.icon : 'tag',
+        total_amount: stat.total_amount,
+        count: stat.count,
+        percentage: totalExpenses > 0 ? ((stat.total_amount / totalExpenses) * 100).toFixed(1) : 0
+      };
     }));
 
-    const serviceStats = await safeAll(db.prepare(`
-      SELECT s.id, s.name, s.category, COUNT(ds.id) as deal_count,
-        COALESCE(SUM(CASE WHEN ds.agreed_price > 0 THEN ds.agreed_price ELSE s.base_price END), 0) as estimated_revenue
-      FROM services s
-      JOIN deal_services ds ON ds.service_id = s.id
-      JOIN client_deals d ON ds.deal_id = d.id
-      ${dealDateFilter}
-      GROUP BY s.id, s.name, s.category
-      ORDER BY estimated_revenue DESC
-    `), ...dealParams);
+    // Service stats
+    const serviceStatsAgg = await ClientDeal.aggregate([
+      { $match: dealQuery },
+      { $unwind: '$services' },
+      {
+        $group: {
+          _id: '$services.service_id',
+          service_name: { $first: '$services.service_name' },
+          deal_count: { $sum: 1 },
+          estimated_revenue: { $sum: '$services.agreed_price' }
+        }
+      },
+      { $sort: { estimated_revenue: -1 } }
+    ]);
 
-    const monthlyExpenses = await safeAll(db.prepare(`
-      SELECT strftime('%Y-%m', expense_date) as month, SUM(amount) as total_expense
-      FROM expenses
-      GROUP BY strftime('%Y-%m', expense_date)
-      ORDER BY month DESC
-      LIMIT 12
-    `));
+    const serviceStats = await Promise.all(serviceStatsAgg.map(async (stat) => {
+      const s = await Service.findById(stat._id);
+      return {
+        id: stat._id ? stat._id.toString() : '',
+        name: stat.service_name || (s ? s.name : 'Custom Service'),
+        category: s ? s.category : 'Digital Marketing',
+        deal_count: stat.deal_count,
+        estimated_revenue: stat.estimated_revenue
+      };
+    }));
 
-    const monthlyIncome = await safeAll(db.prepare(`
-      SELECT strftime('%Y-%m', payment_date) as month, SUM(amount) as total_income
-      FROM client_payments
-      GROUP BY strftime('%Y-%m', payment_date)
-      ORDER BY month DESC
-      LIMIT 12
-    `));
+    // Monthly trends
+    const monthlyExpensesAgg = await Expense.aggregate([
+      {
+        $group: {
+          _id: { $substr: ['$expense_date', 0, 7] },
+          total_expense: { $sum: '$amount' }
+        }
+      },
+      { $sort: { _id: -1 } },
+      { $limit: 12 }
+    ]);
+
+    const monthlyIncomeAgg = await ClientPayment.aggregate([
+      {
+        $group: {
+          _id: { $substr: ['$payment_date', 0, 7] },
+          total_income: { $sum: '$amount' }
+        }
+      },
+      { $sort: { _id: -1 } },
+      { $limit: 12 }
+    ]);
 
     const monthMap = {};
-    monthlyIncome.forEach(i => {
-      monthMap[i.month] = { month: i.month, income: i.total_income, expense: 0, profit: i.total_income };
+    monthlyIncomeAgg.forEach(i => {
+      if (i._id) monthMap[i._id] = { month: i._id, income: i.total_income, expense: 0, profit: i.total_income };
     });
-    monthlyExpenses.forEach(e => {
-      if (!monthMap[e.month]) {
-        monthMap[e.month] = { month: e.month, income: 0, expense: e.total_expense, profit: -e.total_expense };
-      } else {
-        monthMap[e.month].expense = e.total_expense;
-        monthMap[e.month].profit = monthMap[e.month].income - e.total_expense;
+    monthlyExpensesAgg.forEach(e => {
+      if (e._id) {
+        if (!monthMap[e._id]) {
+          monthMap[e._id] = { month: e._id, income: 0, expense: e.total_expense, profit: -e.total_expense };
+        } else {
+          monthMap[e._id].expense = e.total_expense;
+          monthMap[e._id].profit = monthMap[e._id].income - e.total_expense;
+        }
       }
     });
 
     const monthlyTrends = Object.values(monthMap).sort((a, b) => a.month.localeCompare(b.month));
 
-    const paymentModeBreakdown = await safeAll(db.prepare(`
-      SELECT payment_mode, SUM(amount) as total, COUNT(*) as count
-      FROM expenses e
-      ${expDateFilter}
-      GROUP BY payment_mode
-      ORDER BY total DESC
-    `), ...expParams);
+    const paymentModeBreakdownAgg = await Expense.aggregate([
+      { $match: expQuery },
+      { $group: { _id: '$payment_mode', total: { $sum: '$amount' }, count: { $sum: 1 } } },
+      { $sort: { total: -1 } }
+    ]);
+    const paymentModeBreakdown = paymentModeBreakdownAgg.map(p => ({
+      payment_mode: p._id || 'UPI',
+      total: p.total,
+      count: p.count
+    }));
 
-    const topPendingClients = await safeAll(db.prepare(`
-      SELECT id, client_name, company_name, client_phone, total_deal_amount, received_amount, pending_amount, deal_date
-      FROM client_deals
-      WHERE pending_amount > 0 AND status = 'active'
-      ORDER BY pending_amount DESC
-      LIMIT 5
-    `));
+    const topPendingDeals = await ClientDeal.find({ pending_amount: { $gt: 0 }, status: 'active' })
+      .sort({ pending_amount: -1 })
+      .limit(5);
 
-    const recentExpenses = await safeAll(db.prepare(`
-      SELECT e.id, 'expense' as type, e.amount, e.expense_date as date, e.payment_mode, e.description as title, c.name as subtitle, c.color as badge_color
-      FROM expenses e
-      JOIN expense_categories c ON e.category_id = c.id
-      ORDER BY e.expense_date DESC, e.id DESC
-      LIMIT 10
-    `));
+    const topPendingClients = topPendingDeals.map(d => d.toJSON());
 
-    const recentPayments = await safeAll(db.prepare(`
-      SELECT p.id, 'income' as type, p.amount, p.payment_date as date, p.payment_mode, d.client_name as title, COALESCE(d.company_name, 'Client Payment') as subtitle, '#10b981' as badge_color
-      FROM client_payments p
-      JOIN client_deals d ON p.deal_id = d.id
-      ORDER BY p.payment_date DESC, p.id DESC
-      LIMIT 10
-    `));
+    const recentExpensesDocs = await Expense.find().populate('category_id').sort({ expense_date: -1, _id: -1 }).limit(10);
+    const recentExpenses = recentExpensesDocs.map(e => {
+      const json = e.toJSON();
+      return {
+        id: json.id,
+        type: 'expense',
+        amount: json.amount,
+        date: json.expense_date,
+        payment_mode: json.payment_mode,
+        title: json.description,
+        subtitle: json.category_name,
+        badge_color: json.category_color
+      };
+    });
+
+    const recentPaymentsDocs = await ClientPayment.find().populate('deal_id').sort({ payment_date: -1, _id: -1 }).limit(10);
+    const recentPayments = recentPaymentsDocs.map(p => {
+      const json = p.toJSON();
+      const deal = p.deal_id;
+      return {
+        id: json.id,
+        type: 'income',
+        amount: json.amount,
+        date: json.payment_date,
+        payment_mode: json.payment_mode,
+        title: deal ? deal.client_name : 'Client Payment',
+        subtitle: deal && deal.company_name ? deal.company_name : 'Client Payment',
+        badge_color: '#10b981'
+      };
+    });
 
     const recentTransactions = [...recentExpenses, ...recentPayments]
-      .sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id)
+      .sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id))
       .slice(0, 10);
 
     res.json({
@@ -944,19 +935,26 @@ app.get('/api/analytics/summary', async (req, res) => {
   }
 });
 
+// ==========================================
+// 6. EMPLOYEES & SALARIES APIS
+// ==========================================
 app.get('/api/employees', async (req, res) => {
   try {
-    const employees = await safeAll(db.prepare(`
-      SELECT 
-        e.*,
-        COALESCE(SUM(sp.amount), 0) as total_paid_to_date,
-        COUNT(sp.id) as payment_count
-      FROM employees e
-      LEFT JOIN salary_payments sp ON e.id = sp.employee_id
-      GROUP BY e.id
-      ORDER BY e.status ASC, e.name ASC
-    `));
-    res.json(employees);
+    const employees = await Employee.find().sort({ status: 1, name: 1 });
+    const result = await Promise.all(employees.map(async (emp) => {
+      const salAgg = await SalaryPayment.aggregate([
+        { $match: { employee_id: emp._id } },
+        { $group: { _id: null, total: { $sum: '$amount' }, count: { $sum: 1 } } }
+      ]);
+      const totalPaid = salAgg[0] ? salAgg[0].total : 0;
+      const count = salAgg[0] ? salAgg[0].count : 0;
+      return {
+        ...emp.toJSON(),
+        total_paid_to_date: totalPaid,
+        payment_count: count
+      };
+    }));
+    res.json(result);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -968,23 +966,18 @@ app.post('/api/employees', async (req, res) => {
     if (!name || !name.trim()) {
       return res.status(400).json({ error: 'Team member name is required' });
     }
-    const stmt = db.prepare(`
-      INSERT INTO employees (name, job_role, monthly_salary, status, phone, email, joining_date, notes)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-    const info = await stmt.run(
-      name.trim(),
-      job_role || 'Graphics',
-      Number(monthly_salary) || 0,
-      status || 'Active',
-      phone || '',
-      email || '',
-      joining_date || new Date().toISOString().split('T')[0],
-      notes || ''
-    );
-    const insertedId = getLastInsertId(info, 'employees');
-    const newEmp = await safeGet(db.prepare('SELECT * FROM employees WHERE id = ?'), insertedId);
-    res.status(201).json(newEmp);
+    const newEmp = new Employee({
+      name: name.trim(),
+      job_role: job_role || 'Graphics',
+      monthly_salary: Number(monthly_salary) || 0,
+      status: status || 'Active',
+      phone: phone || '',
+      email: email || '',
+      joining_date: joining_date || new Date().toISOString().split('T')[0],
+      notes: notes || ''
+    });
+    await newEmp.save();
+    res.status(201).json(newEmp.toJSON());
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -994,24 +987,22 @@ app.put('/api/employees/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const { name, job_role, monthly_salary, status, phone, email, joining_date, notes } = req.body;
-    const stmt = db.prepare(`
-      UPDATE employees
-      SET name = ?, job_role = ?, monthly_salary = ?, status = ?, phone = ?, email = ?, joining_date = ?, notes = ?
-      WHERE id = ?
-    `);
-    await stmt.run(
-      name.trim(),
-      job_role || 'Graphics',
-      Number(monthly_salary) || 0,
-      status || 'Active',
-      phone || '',
-      email || '',
-      joining_date || '',
-      notes || '',
-      id
+    const updated = await Employee.findByIdAndUpdate(
+      id,
+      {
+        name: name ? name.trim() : undefined,
+        job_role: job_role || 'Graphics',
+        monthly_salary: Number(monthly_salary) || 0,
+        status: status || 'Active',
+        phone: phone || '',
+        email: email || '',
+        joining_date: joining_date || '',
+        notes: notes || ''
+      },
+      { new: true }
     );
-    const updated = await safeGet(db.prepare('SELECT * FROM employees WHERE id = ?'), id);
-    res.json(updated);
+    if (!updated) return res.status(404).json({ error: 'Employee not found' });
+    res.json(updated.toJSON());
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -1020,8 +1011,8 @@ app.put('/api/employees/:id', async (req, res) => {
 app.delete('/api/employees/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    await db.prepare('DELETE FROM employees WHERE id = ?').run(id);
-    res.json({ success: true, id: Number(id) });
+    await Employee.findByIdAndDelete(id);
+    res.json({ success: true, id });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -1030,30 +1021,13 @@ app.delete('/api/employees/:id', async (req, res) => {
 app.get('/api/salaries', async (req, res) => {
   try {
     const { employee_id, month_year } = req.query;
-    let query = `
-      SELECT sp.*, e.name as employee_name, e.job_role, e.status as employee_status
-      FROM salary_payments sp
-      JOIN employees e ON sp.employee_id = e.id
-    `;
-    const conditions = [];
-    const params = [];
+    const query = {};
 
-    if (employee_id) {
-      conditions.push('sp.employee_id = ?');
-      params.push(employee_id);
-    }
-    if (month_year) {
-      conditions.push('sp.month_year = ?');
-      params.push(month_year);
-    }
+    if (employee_id) query.employee_id = employee_id;
+    if (month_year) query.month_year = month_year;
 
-    if (conditions.length > 0) {
-      query += ' WHERE ' + conditions.join(' AND ');
-    }
-    query += ' ORDER BY sp.payment_date DESC, sp.id DESC';
-
-    const payments = await safeAll(db.prepare(query), ...params);
-    res.json(payments);
+    const payments = await SalaryPayment.find(query).populate('employee_id').sort({ payment_date: -1, _id: -1 });
+    res.json(payments.map(p => p.toJSON()));
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -1066,39 +1040,27 @@ app.post('/api/salaries', async (req, res) => {
       return res.status(400).json({ error: 'Employee, amount, and month/year are required' });
     }
 
-    const existing = await safeGet(db.prepare(`
-      SELECT sp.*, e.name as employee_name 
-      FROM salary_payments sp 
-      JOIN employees e ON sp.employee_id = e.id 
-      WHERE sp.employee_id = ? AND sp.month_year = ?
-    `), employee_id, month_year);
-
+    const existing = await SalaryPayment.findOne({ employee_id, month_year }).populate('employee_id');
     if (existing) {
+      const empName = existing.employee_id ? existing.employee_id.name : 'Employee';
       return res.status(400).json({ 
-        error: `Salary for ${existing.employee_name} for ${month_year} has already been paid (₹${Number(existing.amount).toLocaleString('en-IN')}). Duplicate payments for the same month are not allowed.` 
+        error: `Salary for ${empName} for ${month_year} has already been paid (₹${Number(existing.amount).toLocaleString('en-IN')}). Duplicate payments for the same month are not allowed.` 
       });
     }
 
-    const stmt = db.prepare(`
-      INSERT INTO salary_payments (employee_id, month_year, amount, payment_date, payment_mode, reference_no, notes)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `);
-    const info = await stmt.run(
+    const newSal = new SalaryPayment({
       employee_id,
       month_year,
-      Number(amount),
-      payment_date || new Date().toISOString().split('T')[0],
-      payment_mode || 'GPay',
-      reference_no || '',
-      notes || ''
-    );
-    const insertedId = getLastInsertId(info, 'salary_payments');
-    const newSal = await safeGet(db.prepare(`
-      SELECT sp.*, e.name as employee_name, e.job_role 
-      FROM salary_payments sp JOIN employees e ON sp.employee_id = e.id 
-      WHERE sp.id = ?
-    `), insertedId);
-    res.status(201).json(newSal);
+      amount: Number(amount),
+      payment_date: payment_date || new Date().toISOString().split('T')[0],
+      payment_mode: payment_mode || 'GPay',
+      reference_no: reference_no || '',
+      notes: notes || ''
+    });
+    await newSal.save();
+
+    const populated = await SalaryPayment.findById(newSal._id).populate('employee_id');
+    res.status(201).json(populated.toJSON());
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -1107,8 +1069,8 @@ app.post('/api/salaries', async (req, res) => {
 app.delete('/api/salaries/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    await db.prepare('DELETE FROM salary_payments WHERE id = ?').run(id);
-    res.json({ success: true, id: Number(id) });
+    await SalaryPayment.findByIdAndDelete(id);
+    res.json({ success: true, id });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -1116,12 +1078,8 @@ app.delete('/api/salaries/:id', async (req, res) => {
 
 app.get('/api/salaries/matrix', async (req, res) => {
   try {
-    const employees = await safeAll(db.prepare('SELECT * FROM employees ORDER BY id ASC'));
-    const payments = await safeAll(db.prepare(`
-      SELECT sp.*, e.name as employee_name
-      FROM salary_payments sp
-      JOIN employees e ON sp.employee_id = e.id
-    `));
+    const employees = await Employee.find().sort({ _id: 1 });
+    const payments = await SalaryPayment.find().populate('employee_id');
 
     const months = [
       'March 2026', 'April 2026', 'May 2026', 'June 2026',
@@ -1130,8 +1088,9 @@ app.get('/api/salaries/matrix', async (req, res) => {
     ];
 
     const matrix = employees.map(emp => {
+      const empIdStr = emp._id.toString();
       const row = {
-        id: emp.id,
+        id: empIdStr,
         name: emp.name,
         job_role: emp.job_role,
         monthly_salary: emp.monthly_salary,
@@ -1141,11 +1100,11 @@ app.get('/api/salaries/matrix', async (req, res) => {
       };
 
       months.forEach(m => {
-        const empPaymentsForMonth = payments.filter(p => p.employee_id === emp.id && p.month_year === m);
+        const empPaymentsForMonth = payments.filter(p => p.employee_id && p.employee_id._id.toString() === empIdStr && p.month_year === m);
         const totalPaid = empPaymentsForMonth.reduce((sum, p) => sum + p.amount, 0);
         row.monthly_payouts[m] = {
           amount: totalPaid,
-          payments: empPaymentsForMonth
+          payments: empPaymentsForMonth.map(p => p.toJSON())
         };
       });
 
@@ -1157,9 +1116,6 @@ app.get('/api/salaries/matrix', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
-
-import path from 'path';
-import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1176,6 +1132,5 @@ app.get('*', (req, res, next) => {
 
 // Start Express server
 app.listen(PORT, () => {
-  console.log(`Gandhi Infosol Finance Server running on http://localhost:${PORT}`);
+  console.log(`Gandhi Infosol Finance Server (MongoDB) running on http://localhost:${PORT}`);
 });
-
