@@ -5,6 +5,7 @@ const serviceSchema = new mongoose.Schema({
   category: { type: String, default: 'Digital Marketing' },
   base_price: { type: Number, default: 0 },
   description: { type: String, default: '' },
+  pricing_type: { type: String, default: 'month_wise', enum: ['month_wise', 'qty_wise'] },
   is_active: { type: Number, default: 1 },
   created_at: { type: Date, default: Date.now }
 }, {

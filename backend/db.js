@@ -32,26 +32,26 @@ export async function initDB() {
   try {
     // Seed default Services if missing
     const officialServices = [
-      { name: 'Professional Logo Design', category: 'Specialized Creative Solutions', base_price: 799, description: 'Custom vector logo design & high-res branding assets' },
-      { name: 'Visiting Card Design', category: 'Specialized Creative Solutions', base_price: 399, description: 'Print-ready double-sided business card layout' },
-      { name: 'Smart NFC Business Card', category: 'Specialized Creative Solutions', base_price: 349, description: 'Digital NFC tap business card setup & link profile' },
-      { name: 'Label Design Front', category: 'Specialized Creative Solutions', base_price: 499, description: 'Front product label packaging design' },
-      { name: 'Label Design Front & Back', category: 'Specialized Creative Solutions', base_price: 799, description: 'Complete front & back product label packaging design' },
-      { name: 'Website Development', category: 'Digital & Production', base_price: 9999, description: 'Starting @ ₹9,999 - Responsive business website / landing page' },
-      { name: 'Video Shoot Creation', category: 'Digital & Production', base_price: 1499, description: '₹1,499 / Per Reel - Professional 4K video shoot & Reel creation' },
-      { name: 'Quick Impact Marketing', category: 'Digital & Production', base_price: 499, description: '₹499 / 1 Day - 1-Day quick impact turnaround marketing campaign' },
-      { name: 'Meta Ads Service', category: 'Meta Ads & Performance', base_price: 6000, description: '₹6,000 / Month - Facebook & Instagram ad campaign setup, targeting & ROAS management (Ad spend extra)' },
+      { name: 'Professional Logo Design', category: 'Specialized Creative Solutions', base_price: 799, pricing_type: 'qty_wise', description: 'Custom vector logo design & high-res branding assets' },
+      { name: 'Visiting Card Design', category: 'Specialized Creative Solutions', base_price: 399, pricing_type: 'qty_wise', description: 'Print-ready double-sided business card layout' },
+      { name: 'Smart NFC Business Card', category: 'Specialized Creative Solutions', base_price: 349, pricing_type: 'qty_wise', description: 'Digital NFC tap business card setup & link profile' },
+      { name: 'Label Design Front', category: 'Specialized Creative Solutions', base_price: 499, pricing_type: 'qty_wise', description: 'Front product label packaging design' },
+      { name: 'Label Design Front & Back', category: 'Specialized Creative Solutions', base_price: 799, pricing_type: 'qty_wise', description: 'Complete front & back product label packaging design' },
+      { name: 'Website Development', category: 'Digital & Production', base_price: 9999, pricing_type: 'qty_wise', description: 'Starting @ ₹9,999 - Responsive business website / landing page' },
+      { name: 'Video Shoot Creation', category: 'Digital & Production', base_price: 1499, pricing_type: 'qty_wise', description: '₹1,499 / Per Reel - Professional 4K video shoot & Reel creation' },
+      { name: 'Quick Impact Marketing', category: 'Digital & Production', base_price: 499, pricing_type: 'qty_wise', description: '₹499 / 1 Day - 1-Day quick impact turnaround marketing campaign' },
     ];
 
     for (const s of officialServices) {
       await Service.updateOne(
         { name: s.name },
-        { $setOnInsert: s },
+        { 
+          $setOnInsert: s,
+          $set: { pricing_type: s.pricing_type }
+        },
         { upsert: true }
       );
     }
-
-    // Seed default Expense Categories if missing
     const defaultCategories = [
       { name: 'Food & Refreshments', icon: 'utensils', color: '#f97316', description: 'Team snacks, client dinners, shoot day lunches & coffee' },
       { name: 'Travel & Commute', icon: 'navigation', color: '#06b6d4', description: 'Auto, cab, metro, and local commute for shoots' },

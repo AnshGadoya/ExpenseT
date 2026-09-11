@@ -12,6 +12,7 @@ export default function ServicesMaster({ services, onRefreshServices, darkMode }
     description: '',
     base_price: '',
     category: 'Specialized Creative Solutions',
+    pricing_type: 'month_wise',
   });
 
   const handleOpenAdd = () => {
@@ -21,6 +22,7 @@ export default function ServicesMaster({ services, onRefreshServices, darkMode }
       description: '',
       base_price: '',
       category: 'Specialized Creative Solutions',
+      pricing_type: 'month_wise',
     });
     setIsModalOpen(true);
   };
@@ -32,6 +34,7 @@ export default function ServicesMaster({ services, onRefreshServices, darkMode }
       description: serv.description || '',
       base_price: serv.base_price,
       category: serv.category || 'Production',
+      pricing_type: serv.pricing_type || 'month_wise',
     });
     setIsModalOpen(true);
   };
@@ -45,6 +48,7 @@ export default function ServicesMaster({ services, onRefreshServices, darkMode }
       description: formData.description ? formData.description.trim() : '',
       base_price: Number(formData.base_price) || 0,
       category: formData.category || 'Specialized Creative Solutions',
+      pricing_type: formData.pricing_type || 'month_wise',
     };
 
     try {
@@ -96,49 +100,63 @@ export default function ServicesMaster({ services, onRefreshServices, darkMode }
 
       {/* Services Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {services.map((serv) => (
-          <div
-            key={serv.id}
-            className="bg-white dark:bg-slate-900 rounded-2xl p-5 flex flex-col justify-between border border-slate-200 dark:border-slate-800 shadow-2xs hover:border-indigo-300 dark:hover:border-indigo-700 hover:shadow-sm transition-all group"
-          >
-            <div>
-              <div className="flex items-start justify-between gap-2 mb-2">
-                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-800/80 uppercase tracking-wider">
-                  {serv.category || 'Digital'}
-                </span>
-                <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
-                  <button
-                    onClick={() => handleOpenEdit(serv)}
-                    className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                  >
-                    <Edit3 className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => handleDelete(serv.id)}
-                    className="p-1 rounded-lg text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/60 transition-colors"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+        {services.map((serv) => {
+          const isMonthWise = (serv.pricing_type || 'month_wise') === 'month_wise';
+          return (
+            <div
+              key={serv.id}
+              className="bg-white dark:bg-slate-900 rounded-2xl p-5 flex flex-col justify-between border border-slate-200 dark:border-slate-800 shadow-2xs hover:border-indigo-300 dark:hover:border-indigo-700 hover:shadow-sm transition-all group"
+            >
+              <div>
+                <div className="flex items-start justify-between gap-2 mb-2">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-800/80 uppercase tracking-wider">
+                      {serv.category || 'Digital'}
+                    </span>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wider ${
+                      isMonthWise
+                        ? 'bg-amber-50 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800'
+                        : 'bg-emerald-50 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                    }`}>
+                      {isMonthWise ? '📅 Month-wise' : '🔢 Qty-wise'}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
+                    <button
+                      onClick={() => handleOpenEdit(serv)}
+                      className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                    >
+                      <Edit3 className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => handleDelete(serv.id)}
+                      className="p-1 rounded-lg text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/60 transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
+
+                <h3 className="text-base font-bold text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                  {serv.name}
+                </h3>
+                
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5 line-clamp-3">
+                  {serv.description || 'No description provided.'}
+                </p>
               </div>
 
-              <h3 className="text-base font-bold text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
-                {serv.name}
-              </h3>
-              
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5 line-clamp-3">
-                {serv.description || 'No description provided.'}
-              </p>
+              <div className="pt-4 mt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                <span className="text-xs text-slate-400 dark:text-slate-500 font-medium">
+                  {isMonthWise ? 'Base Monthly Rate' : 'Fixed Unit Rate'}
+                </span>
+                <span className="text-base font-black text-indigo-600 dark:text-indigo-400 font-mono">
+                  {formatCurrency(serv.base_price)} {isMonthWise ? '/ Month' : '/ Unit'}
+                </span>
+              </div>
             </div>
-
-            <div className="pt-4 mt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
-              <span className="text-xs text-slate-400 dark:text-slate-500 font-medium">Standard Base Rate</span>
-              <span className="text-base font-black text-indigo-600 dark:text-indigo-400">
-                {formatCurrency(serv.base_price)}
-              </span>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Modal */}
@@ -162,6 +180,48 @@ export default function ServicesMaster({ services, onRefreshServices, darkMode }
             />
           </div>
 
+          {/* Pricing Mode Selector */}
+          <div>
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+              Billing & Pricing Mode <span className="text-indigo-600 dark:text-indigo-400">*</span>
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setFormData({ ...formData, pricing_type: 'month_wise' })}
+                className={`p-3 rounded-xl border text-left transition-all flex flex-col justify-between ${
+                  formData.pricing_type === 'month_wise'
+                    ? 'bg-amber-50 dark:bg-amber-950/60 border-amber-500 text-amber-900 dark:text-amber-200 ring-2 ring-amber-500/20'
+                    : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-slate-300'
+                }`}
+              >
+                <div className="flex items-center gap-1.5 font-bold text-xs">
+                  <span>📅</span> Month-wise Billing
+                </div>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 leading-tight">
+                  Scales with contract duration months. Quantity selector hidden in deal creation.
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setFormData({ ...formData, pricing_type: 'qty_wise' })}
+                className={`p-3 rounded-xl border text-left transition-all flex flex-col justify-between ${
+                  formData.pricing_type === 'qty_wise'
+                    ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-500 text-emerald-900 dark:text-emerald-200 ring-2 ring-emerald-500/20'
+                    : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-slate-300'
+                }`}
+              >
+                <div className="flex items-center gap-1.5 font-bold text-xs">
+                  <span>🔢</span> Qty-wise Billing
+                </div>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 leading-tight">
+                  Fixed unit price (e.g. per Reel / per Logo). Quantity selector enabled; contract duration ignored.
+                </p>
+              </button>
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
@@ -181,7 +241,7 @@ export default function ServicesMaster({ services, onRefreshServices, darkMode }
 
             <div>
               <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                Base Package Price (₹)
+                {formData.pricing_type === 'month_wise' ? 'Base Monthly Rate (₹)' : 'Base Unit Rate (₹)'}
               </label>
               <div className="relative">
                 <span className="absolute left-3 top-2 text-slate-400 font-bold">₹</span>

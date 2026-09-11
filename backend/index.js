@@ -262,7 +262,7 @@ app.get('/api/services', async (req, res) => {
 
 app.post('/api/services', async (req, res) => {
   try {
-    const { name, category, base_price, description } = req.body;
+    const { name, category, base_price, description, pricing_type } = req.body;
     if (!name || !name.trim()) {
       return res.status(400).json({ error: 'Service name is required' });
     }
@@ -271,6 +271,7 @@ app.post('/api/services', async (req, res) => {
       category: category || 'Digital Marketing',
       base_price: Number(base_price) || 0,
       description: description || '',
+      pricing_type: pricing_type === 'qty_wise' ? 'qty_wise' : 'month_wise',
       is_active: 1
     });
     await newService.save();
@@ -286,7 +287,7 @@ app.post('/api/services', async (req, res) => {
 app.put('/api/services/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, category, base_price, description, is_active } = req.body;
+    const { name, category, base_price, description, pricing_type, is_active } = req.body;
     const updated = await Service.findByIdAndUpdate(
       id,
       {
@@ -294,6 +295,7 @@ app.put('/api/services/:id', async (req, res) => {
         category: category || 'Digital Marketing',
         base_price: Number(base_price) || 0,
         description: description || '',
+        pricing_type: pricing_type === 'qty_wise' ? 'qty_wise' : 'month_wise',
         is_active: is_active === undefined ? 1 : is_active ? 1 : 0
       },
       { new: true }

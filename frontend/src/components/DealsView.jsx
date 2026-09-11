@@ -272,18 +272,20 @@ export default function DealsView({
     });
   };
 
-  // Calculate 1-Month Base Sum of selected services with quantities
+  // Calculate 1-Month Base Sum of selected services (Month-wise at base rate + Qty-wise at total unit rate)
   const calculateOneMonthSum = (serviceIds = [], quantities = {}) => {
     const safeIds = Array.isArray(serviceIds) ? serviceIds : [];
     const safeQtys = quantities || {};
     return safeIds.reduce((total, id) => {
       const s = (services || []).find(srv => srv.id === id);
-      const qty = Math.max(1, Number(safeQtys[id]) || 1);
-      return total + (s ? Number(s.base_price || 0) * qty : 0);
+      if (!s) return total;
+      const isQtyWise = (s.pricing_type || 'month_wise') === 'qty_wise';
+      const qty = isQtyWise ? Math.max(1, Number(safeQtys[id]) || 1) : 1;
+      return total + (Number(s.base_price || 0) * qty);
     }, 0);
   };
 
-  // Calculate Total Deal Price for selected Duration & Service Quantities
+  // Calculate Total Deal Price based on Service Pricing Mode (Month-wise scales with duration; Qty-wise is fixed by quantity)
   const calculateDealPrice = (serviceIds = [], durationMonths = 1, quantities = {}) => {
     const safeIds = Array.isArray(serviceIds) ? serviceIds : [];
     const safeQtys = quantities || {};
@@ -294,14 +296,19 @@ export default function DealsView({
       const s = (services || []).find(srv => srv.id === id);
       if (!s) return;
       
-      const qty = Math.max(1, Number(safeQtys[id]) || 1);
-      const price = Number(s.base_price || 0) * qty;
+      const isQtyWise = (s.pricing_type || 'month_wise') === 'qty_wise';
 
-      // Special Meta Ads 3-Month Offer Rule: ₹12,000 for 3 months instead of ₹18,000
-      if (s.name && s.name.includes('Meta Ads') && dur === 3) {
-        totalSum += 12000 * qty;
+      if (isQtyWise) {
+        // Qty-wise: Billed strictly per quantity; does NOT scale with duration_months
+        const qty = Math.max(1, Number(safeQtys[id]) || 1);
+        totalSum += Number(s.base_price || 0) * qty;
       } else {
-        totalSum += price * dur;
+        // Month-wise: Billed per month based on contract duration (Quantity multiplier locked to 1)
+        if (s.name && s.name.includes('Meta Ads') && dur === 3) {
+          totalSum += 12000;
+        } else {
+          totalSum += Number(s.base_price || 0) * dur;
+        }
       }
     });
 
@@ -1242,6 +1249,8 @@ export default function DealsView({
                 const isSelected = (formData.selected_service_ids || []).includes(serv.id);
                 const currentQty = formData.service_quantities?.[serv.id] || 1;
                 const servName = serv.name || '';
+                const isQtyWise = (serv.pricing_type || 'month_wise') === 'qty_wise';
+
                 return (
                   <div
                     key={serv.id}
@@ -1262,12 +1271,12 @@ export default function DealsView({
                       <div className="truncate">
                         <p className="truncate font-semibold">{servName}</p>
                         <p className="text-[10px] font-mono text-slate-500 dark:text-slate-400">
-                          {formatCurrency(serv.base_price)} {servName.toLowerCase().includes('reel') || servName.toLowerCase().includes('video shoot') ? '/ Reel' : '/ Mo'}
+                          {formatCurrency(serv.base_price)} {isQtyWise ? '/ Unit' : '/ Mo'}
                         </p>
                       </div>
                     </div>
 
-                    {isSelected && (
+                    {isSelected && isQtyWise && (
                       <div className="flex items-center gap-1 bg-white dark:bg-slate-900 border border-indigo-300 dark:border-indigo-700 rounded-lg p-0.5 shadow-2xs shrink-0" onClick={(e) => e.stopPropagation()}>
                         <button
                           type="button"
@@ -1295,6 +1304,12 @@ export default function DealsView({
                           +
                         </button>
                       </div>
+                    )}
+
+                    {isSelected && !isQtyWise && (
+                      <span className="text-[10px] font-bold text-amber-700 dark:text-amber-300 bg-amber-100/80 dark:bg-amber-950/80 border border-amber-200 dark:border-amber-800/80 px-2 py-0.5 rounded-md shrink-0">
+                        📅 Month-wise
+                      </span>
                     )}
                   </div>
                 );
@@ -1717,6 +1732,8 @@ export default function DealsView({
                 {services.map((serv) => {
                   const isSelected = renewFormData.selected_service_ids.includes(serv.id);
                   const currentQty = renewFormData.service_quantities?.[serv.id] || 1;
+                  const isQtyWise = (serv.pricing_type || 'month_wise') === 'qty_wise';
+
                   return (
                     <div
                       key={serv.id}
@@ -1737,12 +1754,12 @@ export default function DealsView({
                         <div className="truncate">
                           <p className="truncate font-semibold">{serv.name}</p>
                           <p className="text-[10px] font-mono text-slate-500 dark:text-slate-400">
-                            {formatCurrency(serv.base_price)} {serv.name.toLowerCase().includes('reel') || serv.name.toLowerCase().includes('video shoot') ? '/ Reel' : '/ Mo'}
+                            {formatCurrency(serv.base_price)} {isQtyWise ? '/ Unit' : '/ Mo'}
                           </p>
                         </div>
                       </div>
 
-                      {isSelected && (
+                      {isSelected && isQtyWise && (
                         <div className="flex items-center gap-1 bg-white dark:bg-slate-900 border border-emerald-300 dark:border-emerald-700 rounded-lg p-0.5 shadow-2xs shrink-0" onClick={(e) => e.stopPropagation()}>
                           <button
                             type="button"
@@ -1770,6 +1787,12 @@ export default function DealsView({
                             +
                           </button>
                         </div>
+                      )}
+
+                      {isSelected && !isQtyWise && (
+                        <span className="text-[10px] font-bold text-amber-700 dark:text-amber-300 bg-amber-100/80 dark:bg-amber-950/80 border border-amber-200 dark:border-amber-800/80 px-2 py-0.5 rounded-md shrink-0">
+                          📅 Month-wise
+                        </span>
                       )}
                     </div>
                   );
