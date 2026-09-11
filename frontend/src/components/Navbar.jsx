@@ -11,10 +11,13 @@ import {
   Building2,
   Sun,
   Moon,
-  Users
+  Users,
+  LogOut,
+  UserCheck
 } from 'lucide-react';
 import NotificationsDropdown from './NotificationsDropdown';
 import GlobalSearch from './GlobalSearch';
+import { useAuth } from '../context/AuthContext';
 
 export default function Navbar({
   activeTab,
@@ -27,6 +30,7 @@ export default function Navbar({
   onRenewDeal,
   onSelectDealForPayment
 }) {
+  const { user, logout } = useAuth();
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'expenses', label: 'Daily Expenses', icon: Receipt },
@@ -60,8 +64,8 @@ export default function Navbar({
             </div>
           </div>
 
-          {/* Right Action Controls: Bell Notifications, Dark Mode Toggle & Quick Add */}
-          <div className="flex items-center gap-2.5">
+          {/* Right Action Controls: Bell Notifications, Dark Mode Toggle, Auth & Quick Add */}
+          <div className="flex items-center gap-2">
 
             {/* Global Search Spotlight */}
             <GlobalSearch
@@ -90,20 +94,41 @@ export default function Navbar({
               )}
             </button>
 
+            {/* User Profile Badge & Logout */}
+            {user && (
+              <div className="flex items-center gap-1.5 pl-1 border-l border-slate-200 dark:border-slate-800">
+                <div className="hidden sm:flex flex-col text-right px-1">
+                  <span className="text-xs font-bold text-slate-800 dark:text-slate-200 leading-tight capitalize">
+                    {user.name || user.username}
+                  </span>
+                  <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium leading-none">
+                    ● Logged in
+                  </span>
+                </div>
+                <button
+                  onClick={logout}
+                  title="Logout"
+                  className="p-2.5 rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-900/60 transition-all shadow-2xs active:scale-95 flex items-center justify-center"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+
             <button
               onClick={onOpenAddExpense}
-              className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800/80 hover:bg-rose-100 dark:hover:bg-rose-900/60 transition-all shadow-2xs active:scale-95"
+              className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800/80 hover:bg-rose-100 dark:hover:bg-rose-900/60 transition-all shadow-2xs active:scale-95"
             >
               <PlusCircle className="w-4 h-4 text-rose-600 dark:text-rose-400" />
-              <span>+ Log Expense</span>
+              <span className="hidden md:inline">+ Log Expense</span>
             </button>
 
             <button
               onClick={onOpenAddDeal}
-              className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 dark:bg-indigo-600 dark:hover:bg-indigo-500 transition-all shadow-sm shadow-indigo-600/20 active:scale-95"
+              className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 dark:bg-indigo-600 dark:hover:bg-indigo-500 transition-all shadow-sm shadow-indigo-600/20 active:scale-95"
             >
               <Wallet className="w-4 h-4" />
-              <span>+ New Client Deal</span>
+              <span className="hidden md:inline">+ New Client Deal</span>
             </button>
           </div>
         </div>

@@ -227,6 +227,16 @@ export default function DealsView({
     setIsRenewModalOpen(true);
   };
 
+  // Check if selected services contain Video Shoot / Reel quantity service
+  const isReelServiceSelected = (serviceIds = []) => {
+    return serviceIds.some(id => {
+      const s = services.find(srv => srv.id === id);
+      if (!s) return false;
+      const name = (s.name || '').toLowerCase();
+      return name.includes('video shoot') || name.includes('reel');
+    });
+  };
+
   // Calculate 1-Month Base Sum of selected services
   const calculateOneMonthSum = (serviceIds) => {
     return serviceIds.reduce((total, id) => {
@@ -773,7 +783,6 @@ export default function DealsView({
                       </span>
 
                       {/* Contract Duration & Expiry Status */}
-                      {deal.status === 'active' && (
                         <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded border ${
                           isExpiredPlan
                             ? 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800'
@@ -781,9 +790,13 @@ export default function DealsView({
                             ? 'bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-950 dark:text-rose-300 dark:border-rose-800 animate-pulse'
                             : 'bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800'
                         }`}>
-                          {durMonths} Mo ({daysRemaining > 0 ? `${daysRemaining}d left` : `Expired ${Math.abs(daysRemaining)}d ago`})
+                          {deal.services && deal.services.some(s => {
+                            const name = (s.service_name || s.name || '').toLowerCase();
+                            return name.includes('video shoot') || name.includes('reel');
+                          })
+                            ? `${durMonths} ${durMonths === 1 ? 'Reel' : 'Reels'}`
+                            : `${durMonths} Mo`} ({daysRemaining > 0 ? `${daysRemaining}d left` : `Expired ${Math.abs(daysRemaining)}d ago`})
                         </span>
-                      )}
                     </div>
                   </div>
 
@@ -1057,28 +1070,81 @@ export default function DealsView({
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                Contract Term / Duration <span className="text-indigo-600 dark:text-indigo-400">*</span>
-              </label>
-              <select
-                value={formData.duration_months || 1}
-                onChange={(e) => {
-                  const newDur = Number(e.target.value);
-                  const updatedSum = calculateDealPrice(formData.selected_service_ids, newDur);
-                  setFormData(prev => ({
-                    ...prev,
-                    duration_months: newDur,
-                    total_deal_amount: updatedSum > 0 ? updatedSum : prev.total_deal_amount
-                  }));
-                }}
-                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-white text-xs font-bold focus:outline-none focus:border-indigo-600"
-              >
-                <option value={1}>1 Month Membership (Standard 30 Days)</option>
-                <option value={2}>2 Months Membership (60 Days)</option>
-                <option value={3}>3 Months Membership (90 Days - Special Offer)</option>
-                <option value={6}>6 Months Membership (180 Days)</option>
-                <option value={12}>1 Year Membership (365 Days)</option>
-              </select>
+              {isReelServiceSelected(formData.selected_service_ids) ? (
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1 flex items-center justify-between">
+                    <span>Number of Reels (Quantity) <span className="text-indigo-600 dark:text-indigo-400">*</span></span>
+                    <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold bg-indigo-50 dark:bg-indigo-950/80 px-2 py-0.5 rounded border border-indigo-200 dark:border-indigo-800">₹1,499 / Per Reel</span>
+                  </label>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      type="number"
+                      min="1"
+                      max="100"
+                      required
+                      value={formData.duration_months || 1}
+                      onChange={(e) => {
+                        const newQty = Math.max(1, parseInt(e.target.value) || 1);
+                        const updatedSum = calculateDealPrice(formData.selected_service_ids, newQty);
+                        setFormData(prev => ({
+                          ...prev,
+                          duration_months: newQty,
+                          total_deal_amount: updatedSum > 0 ? updatedSum : prev.total_deal_amount
+                        }));
+                      }}
+                      className="w-24 bg-slate-50 dark:bg-slate-800 border border-indigo-400 dark:border-indigo-600 rounded-xl px-3 py-2 text-slate-900 dark:text-white text-xs font-black focus:outline-none focus:border-indigo-600 shadow-2xs"
+                    />
+                    <div className="flex flex-wrap gap-1">
+                      {[1, 2, 3, 5, 10].map(qty => (
+                        <button
+                          key={qty}
+                          type="button"
+                          onClick={() => {
+                            const updatedSum = calculateDealPrice(formData.selected_service_ids, qty);
+                            setFormData(prev => ({
+                              ...prev,
+                              duration_months: qty,
+                              total_deal_amount: updatedSum > 0 ? updatedSum : prev.total_deal_amount
+                            }));
+                          }}
+                          className={`px-2.5 py-1 text-xs rounded-lg font-bold transition-all ${
+                            (formData.duration_months || 1) === qty
+                              ? 'bg-indigo-600 text-white shadow-xs'
+                              : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-indigo-100 dark:hover:bg-slate-600'
+                          }`}
+                        >
+                          {qty} {qty === 1 ? 'Reel' : 'Reels'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Contract Term / Duration <span className="text-indigo-600 dark:text-indigo-400">*</span>
+                  </label>
+                  <select
+                    value={formData.duration_months || 1}
+                    onChange={(e) => {
+                      const newDur = Number(e.target.value);
+                      const updatedSum = calculateDealPrice(formData.selected_service_ids, newDur);
+                      setFormData(prev => ({
+                        ...prev,
+                        duration_months: newDur,
+                        total_deal_amount: updatedSum > 0 ? updatedSum : prev.total_deal_amount
+                      }));
+                    }}
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-white text-xs font-bold focus:outline-none focus:border-indigo-600"
+                  >
+                    <option value={1}>1 Month Membership (Standard 30 Days)</option>
+                    <option value={2}>2 Months Membership (60 Days)</option>
+                    <option value={3}>3 Months Membership (90 Days - Special Offer)</option>
+                    <option value={6}>6 Months Membership (180 Days)</option>
+                    <option value={12}>1 Year Membership (365 Days)</option>
+                  </select>
+                </div>
+              )}
             </div>
           </div>
 
@@ -1109,11 +1175,22 @@ export default function DealsView({
                 Services Included (Select to auto-calculate price)
               </label>
               <span className="text-[11px] font-extrabold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950 px-2.5 py-0.5 rounded-md border border-indigo-200 dark:border-indigo-800">
-                1 Mo Price: {formatCurrency(calculateOneMonthSum(formData.selected_service_ids))}
-                {formData.duration_months > 1 && (
-                  <span className="text-emerald-700 dark:text-emerald-300 ml-1.5">
-                    × {formData.duration_months} Months = {formatCurrency(calculateDealPrice(formData.selected_service_ids, formData.duration_months))}
-                  </span>
+                {isReelServiceSelected(formData.selected_service_ids) ? (
+                  <>
+                    Unit Price: {formatCurrency(calculateOneMonthSum(formData.selected_service_ids))}
+                    <span className="text-emerald-700 dark:text-emerald-300 ml-1.5">
+                      × {formData.duration_months || 1} {(formData.duration_months || 1) === 1 ? 'Reel' : 'Reels'} = {formatCurrency(calculateDealPrice(formData.selected_service_ids, formData.duration_months))}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    1 Mo Price: {formatCurrency(calculateOneMonthSum(formData.selected_service_ids))}
+                    {formData.duration_months > 1 && (
+                      <span className="text-emerald-700 dark:text-emerald-300 ml-1.5">
+                        × {formData.duration_months} Months = {formatCurrency(calculateDealPrice(formData.selected_service_ids, formData.duration_months))}
+                      </span>
+                    )}
+                  </>
                 )}
               </span>
             </div>

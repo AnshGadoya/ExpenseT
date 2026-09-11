@@ -3,6 +3,10 @@ import cors from 'cors';
 import morgan from 'morgan';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+import speakeasy from 'speakeasy';
+import QRCode from 'qrcode';
 
 import connectDB from './db.js';
 import Service from './models/Service.js';
@@ -12,9 +16,11 @@ import ClientDeal from './models/ClientDeal.js';
 import ClientPayment from './models/ClientPayment.js';
 import Employee from './models/Employee.js';
 import SalaryPayment from './models/SalaryPayment.js';
+import User from './models/User.js';
 
 const app = express();
 const PORT = process.env.PORT || 5050;
+const JWT_SECRET = process.env.JWT_SECRET || 'expenset_jwt_secret_key_2026_gandhi_infosol';
 
 // Initialize Database connection & seed defaults
 connectDB();
@@ -27,9 +33,219 @@ app.use(cors({
 app.use(express.json());
 app.use(morgan('dev'));
 
+// JWT Auth Middleware
+export const authenticateToken = (req, res, next) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+
+  if (!token) {
+    return res.status(401).json({ error: 'Access token required' });
+  }
+
+  jwt.verify(token, JWT_SECRET, (err, user) => {
+    if (err) {
+      return res.status(403).json({ error: 'Invalid or expired token' });
+    }
+    req.user = user;
+    next();
+  });
+};
+
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', service: 'Gandhi Infosol Finance API (MongoDB)', timestamp: new Date() });
+});
+
+// ==========================================
+// AUTHENTICATION APIS
+// ==========================================
+
+// POST /api/auth/register - Register a new user
+app.post('/api/auth/register', async (req, res) => {
+  try {
+    const { username, password, name, role } = req.body;
+
+    if (!username || !username.trim()) {
+      return res.status(400).json({ error: 'Username is required' });
+    }
+    if (!password || password.length < 4) {
+      return res.status(400).json({ error: 'Password must be at least 4 characters long' });
+    }
+
+    const existingUser = await User.findOne({ username: username.trim().toLowerCase() });
+    if (existingUser) {
+      return res.status(400).json({ error: 'Username already taken' });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const newUser = new User({
+      username: username.trim().toLowerCase(),
+      password: hashedPassword,
+      name: name ? name.trim() : username.trim(),
+      role: role || 'admin'
+    });
+
+    await newUser.save();
+
+    const token = jwt.sign(
+      { id: newUser._id.toString(), username: newUser.username, role: newUser.role },
+      JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+
+    res.status(201).json({
+      message: 'Registration successful',
+      token,
+      user: newUser.toJSON()
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/auth/login - User login Step 1 (Username & Password verification -> Triggers 2FA)
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+
+    if (!username || !password) {
+      return res.status(400).json({ error: 'Username and password are required' });
+    }
+
+    const user = await User.findOne({ username: username.trim().toLowerCase() });
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid username or password' });
+    }
+
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      return res.status(401).json({ error: 'Invalid username or password' });
+    }
+
+    // Password is valid. Generate temporary 2FA pre-auth token (valid 10 minutes)
+    const tempToken = jwt.sign(
+      { id: user._id.toString(), username: user.username, stage: '2fa_pending' },
+      JWT_SECRET,
+      { expiresIn: '10m' }
+    );
+
+    // If 2FA is already enabled, prompt for 6-digit Authenticator code
+    if (user.twoFactorEnabled && user.twoFactorSecret) {
+      return res.json({
+        requires2FA: true,
+        isSetupNeeded: false,
+        tempToken,
+        username: user.username,
+        message: 'Credentials valid. Please enter the 6-digit code from your Google Authenticator app.'
+      });
+    }
+
+    // If 2FA is not setup yet, generate new secret and QR Code for easy scanning
+    let secret = user.twoFactorSecret;
+    if (!secret) {
+      const generated = speakeasy.generateSecret({
+        name: `Gandhi Infosol (${user.username})`,
+        issuer: 'Gandhi Infosol Finance'
+      });
+      secret = generated.base32;
+      user.twoFactorSecret = secret;
+      await user.save();
+    }
+
+    const otpauthUrl = speakeasy.otpauthURL({
+      secret,
+      label: `Gandhi Infosol (${user.username})`,
+      issuer: 'Gandhi Infosol Finance',
+      encoding: 'base32'
+    });
+
+    const qrCodeDataUrl = await QRCode.toDataURL(otpauthUrl);
+
+    res.json({
+      requires2FA: true,
+      isSetupNeeded: true,
+      tempToken,
+      username: user.username,
+      secret,
+      qrCode: qrCodeDataUrl,
+      message: 'Scan the QR Code in Google Authenticator app and enter the 6-digit code to complete setup.'
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/auth/verify-2fa - Verify Google Authenticator 6-digit code & issue full JWT token
+app.post('/api/auth/verify-2fa', async (req, res) => {
+  try {
+    const { tempToken, code } = req.body;
+
+    if (!tempToken || !code) {
+      return res.status(400).json({ error: 'Pre-auth token and 6-digit code are required' });
+    }
+
+    let decoded;
+    try {
+      decoded = jwt.verify(tempToken, JWT_SECRET);
+      if (decoded.stage !== '2fa_pending') {
+        return res.status(400).json({ error: 'Invalid authentication session stage' });
+      }
+    } catch (err) {
+      return res.status(401).json({ error: '2FA session expired. Please enter username & password again.' });
+    }
+
+    const user = await User.findById(decoded.id);
+    if (!user || !user.twoFactorSecret) {
+      return res.status(404).json({ error: 'User 2FA profile not found' });
+    }
+
+    const cleanCode = code.toString().replace(/\s+/g, '').trim();
+
+    const verified = speakeasy.totp.verify({
+      secret: user.twoFactorSecret,
+      encoding: 'base32',
+      token: cleanCode,
+      window: 1 // Allows 30s clock skew window for high reliability
+    });
+
+    if (!verified) {
+      return res.status(400).json({ error: 'Invalid 6-digit Authenticator code. Please check your app and try again.' });
+    }
+
+    // Enable 2FA on first successful verification
+    if (!user.twoFactorEnabled) {
+      user.twoFactorEnabled = true;
+      await user.save();
+    }
+
+    // Generate full session JWT token
+    const token = jwt.sign(
+      { id: user._id.toString(), username: user.username, role: user.role },
+      JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+
+    res.json({
+      message: '2FA Verification successful. Welcome!',
+      token,
+      user: user.toJSON()
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/auth/me - Fetch currently logged in user profile
+app.get('/api/auth/me', authenticateToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    res.json(user.toJSON());
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // ==========================================

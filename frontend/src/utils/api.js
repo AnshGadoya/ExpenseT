@@ -1,14 +1,18 @@
-const rawBase = import.meta.env.VITE_API_URL || 'https://expenset-api.onrender.com/api';
+const rawBase = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5050/api' : 'https://expenset-api.onrender.com/api');
 const BASE_URL = rawBase.endsWith('/') ? rawBase.slice(0, -1) : rawBase;
 
 export async function fetchAPI(endpoint, options = {}) {
+  const token = localStorage.getItem('expenset_token');
+  const headers = {
+    'Content-Type': 'application/json',
+    'bypass-tunnel-reminder': 'true',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...options.headers,
+  };
+
   const config = {
-    headers: {
-      'Content-Type': 'application/json',
-      'bypass-tunnel-reminder': 'true',
-      ...options.headers,
-    },
     ...options,
+    headers,
   };
 
   const response = await fetch(`${BASE_URL}${endpoint}`, config);
@@ -22,6 +26,12 @@ export async function fetchAPI(endpoint, options = {}) {
 }
 
 export const api = {
+  // Auth
+  login: (credentials) => fetchAPI('/auth/login', { method: 'POST', body: JSON.stringify(credentials) }),
+  verify2FA: (data) => fetchAPI('/auth/verify-2fa', { method: 'POST', body: JSON.stringify(data) }),
+  register: (userData) => fetchAPI('/auth/register', { method: 'POST', body: JSON.stringify(userData) }),
+  getMe: () => fetchAPI('/auth/me'),
+
   // Services
   getServices: () => fetchAPI('/services'),
   createService: (data) => fetchAPI('/services', { method: 'POST', body: JSON.stringify(data) }),
@@ -59,7 +69,6 @@ export const api = {
 
   deleteDealPayment: (paymentId) => fetchAPI(`/deals/payments/${paymentId}`, { method: 'DELETE' }),
 
-
   // Employees & Team Members
   getEmployees: () => fetchAPI('/employees'),
   createEmployee: (data) => fetchAPI('/employees', { method: 'POST', body: JSON.stringify(data) }),
@@ -81,3 +90,4 @@ export const api = {
     return fetchAPI(`/analytics/summary${query ? `?${query}` : ''}`);
   },
 };
+

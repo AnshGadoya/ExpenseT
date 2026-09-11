@@ -7,9 +7,12 @@ import DealsView from './components/DealsView';
 import ServicesMaster from './components/ServicesMaster';
 import CategoriesMaster from './components/CategoriesMaster';
 import ReportsView from './components/ReportsView';
+import LoginPage from './components/LoginPage';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import { api } from './utils/api';
 
-export default function App() {
+function MainAppContent() {
+  const { isAuthenticated, loading: authLoading } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [services, setServices] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -63,8 +66,10 @@ export default function App() {
   };
 
   useEffect(() => {
-    loadInitialData();
-  }, []);
+    if (isAuthenticated) {
+      loadInitialData();
+    }
+  }, [isAuthenticated]);
 
   const handleSelectDealForPayment = (deal) => {
     setSelectedDealForPayment(deal);
@@ -76,10 +81,23 @@ export default function App() {
     setActiveTab('deals');
   };
 
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center gap-3 text-slate-100 font-sans">
+        <div className="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+        <p className="text-sm font-semibold text-slate-400">Verifying session...</p>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <LoginPage />;
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col font-sans transition-colors duration-200">
       
-      {/* Top Navigation Bar with Notification Bell & Dark Mode Toggle */}
+      {/* Top Navigation Bar with Notification Bell, User Badge & Dark Mode Toggle */}
       <Navbar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
@@ -188,3 +206,12 @@ export default function App() {
     </div>
   );
 }
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <MainAppContent />
+    </AuthProvider>
+  );
+}
+

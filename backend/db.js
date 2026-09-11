@@ -2,9 +2,11 @@ import mongoose from 'mongoose';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import bcrypt from 'bcryptjs';
 
 import Service from './models/Service.js';
 import ExpenseCategory from './models/ExpenseCategory.js';
+import User from './models/User.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -70,6 +72,21 @@ export async function initDB() {
         { $setOnInsert: c },
         { upsert: true }
       );
+    }
+
+    // Seed default Admin User if no users exist
+    const userCount = await User.countDocuments();
+    if (userCount === 0) {
+      const defaultPassword = process.env.ADMIN_DEFAULT_PASSWORD || 'admin123';
+      const hashedPassword = await bcrypt.hash(defaultPassword, 10);
+      const adminUser = new User({
+        username: 'admin',
+        password: hashedPassword,
+        name: 'Gandhi Infosol Admin',
+        role: 'admin'
+      });
+      await adminUser.save();
+      console.log(`👤 Seeded default admin account (Username: admin, Password: ${defaultPassword})`);
     }
   } catch (err) {
     console.error('Error seeding default data:', err.message);

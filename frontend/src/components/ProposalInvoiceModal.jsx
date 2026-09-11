@@ -116,7 +116,15 @@ export default function ProposalInvoiceModal({ isOpen, onClose, deal, mode = 'pr
         ? `\n🏷️ *Standard List Rate:* ~${formatCurrency(listPrice)}~\n🔥 *Discounted Total Investment:* *${formatCurrency(dealPrice)}* (You Save ${formatCurrency(discountAmount)} - ${discountPercent}% OFF!)`
         : `\n💰 *Total Investment:* ${formatCurrency(dealPrice)}`;
 
-      message = `Hello *${deal.client_name}* 👋,\n\nGreetings from *Gandhi Infosol*!\nHere is your *Digital Marketing Service Proposal & Quotation*:\n\n📌 *Client:* ${deal.client_name} ${deal.company_name ? `(${deal.company_name})` : ''}${priceText}\n📅 *Duration:* ${deal.duration_months || 1} Month(s)\n\nLooking forward to scaling your business digital presence!\n\nBest Regards,\n*Gandhi Infosol*\nSurat | ${AGENCY_INFO.phone}`;
+      const isReelDeal = deal.services && deal.services.some(s => {
+        const name = (s.service_name || s.name || '').toLowerCase();
+        return name.includes('video shoot') || name.includes('reel');
+      });
+      const durationLabel = isReelDeal 
+        ? `${deal.duration_months || 1} ${deal.duration_months === 1 ? 'Reel' : 'Reels'}`
+        : `${deal.duration_months || 1} Month(s)`;
+
+      message = `Hello *${deal.client_name}* 👋,\n\nGreetings from *Gandhi Infosol*!\nHere is your *Digital Marketing Service Proposal & Quotation*:\n\n📌 *Client:* ${deal.client_name} ${deal.company_name ? `(${deal.company_name})` : ''}${priceText}\n📅 *Duration / Qty:* ${durationLabel}\n\nLooking forward to scaling your business digital presence!\n\nBest Regards,\n*Gandhi Infosol*\nSurat | ${AGENCY_INFO.phone}`;
     } else {
       message = `Hello *${deal.client_name}* 👋,\n\nHere is your official *Service Invoice & Bill* from *Gandhi Infosol*:\n\n🧾 *Invoice Date:* ${formatDate(deal.deal_date)}\n💰 *Total Amount:* ${formatCurrency(deal.total_deal_amount)}\n✅ *Received Amount:* ${formatCurrency(deal.received_amount)}\n⌛ *Pending Balance:* ${formatCurrency(deal.pending_amount)}\n\nThank you for choosing Gandhi Infosol!\n\nBest Regards,\n*Gandhi Infosol*\nPhone: ${AGENCY_INFO.phone}`;
     }
@@ -128,6 +136,11 @@ export default function ProposalInvoiceModal({ isOpen, onClose, deal, mode = 'pr
   const servicesList = deal.services && deal.services.length > 0 ? deal.services : [
     { service_name: 'Digital Marketing & Social Media Management', agreed_price: deal.total_deal_amount }
   ];
+
+  const isReelDeal = deal.services && deal.services.some(s => {
+    const name = (s.service_name || s.name || '').toLowerCase();
+    return name.includes('video shoot') || name.includes('reel');
+  });
 
   return (
     <Modal
@@ -269,7 +282,7 @@ export default function ProposalInvoiceModal({ isOpen, onClose, deal, mode = 'pr
 
             <div className="text-right text-xs space-y-1">
               <p className="text-slate-500 font-medium">Date: <strong className="text-slate-900">{formatDate(deal.deal_date)}</strong></p>
-              <p className="text-slate-500 font-medium">Contract Duration: <strong className="text-slate-900">{deal.duration_months || 1} Month(s)</strong></p>
+              <p className="text-slate-500 font-medium">{isReelDeal ? 'Reels Quantity:' : 'Contract Duration:'} <strong className="text-slate-900">{deal.duration_months || 1} {isReelDeal ? (deal.duration_months === 1 ? 'Reel' : 'Reels') : 'Month(s)'}</strong></p>
               {deal.insta_id && (
                 <p className="text-pink-600 font-semibold flex items-center justify-end gap-1">
                   <AtSign className="w-3 h-3" /> {deal.insta_id}

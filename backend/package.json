@@ -11,11 +11,15 @@
   "dependencies": {
     "@libsql/client": "^0.17.4",
     "@libsql/sqlite3": "^0.3.1",
+    "bcryptjs": "^3.0.3",
     "better-sqlite3": "^11.8.1",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.9.5",
-    "morgan": "^1.10.0"
+    "morgan": "^1.10.0",
+    "qrcode": "^1.5.4",
+    "speakeasy": "^2.0.0"
   }
 }
