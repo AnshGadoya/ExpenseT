@@ -611,11 +611,13 @@ app.post('/api/deals', async (req, res) => {
       for (const s of services) {
         const serviceId = typeof s === 'object' ? s.service_id : s;
         const agreedPrice = typeof s === 'object' && s.agreed_price ? Number(s.agreed_price) : 0;
+        const quantity = typeof s === 'object' && s.quantity ? Number(s.quantity) : 1;
         const serviceData = await Service.findById(serviceId);
         formattedServices.push({
           service_id: serviceId,
           service_name: serviceData ? serviceData.name : 'Custom Service',
-          agreed_price: agreedPrice
+          agreed_price: agreedPrice,
+          quantity
         });
       }
     }
@@ -707,11 +709,13 @@ app.put('/api/deals/:id', async (req, res) => {
       for (const s of services) {
         const serviceId = typeof s === 'object' ? s.service_id : s;
         const agreedPrice = typeof s === 'object' && s.agreed_price ? Number(s.agreed_price) : 0;
+        const quantity = typeof s === 'object' && s.quantity ? Number(s.quantity) : 1;
         const serviceData = await Service.findById(serviceId);
         formattedServices.push({
           service_id: serviceId,
           service_name: serviceData ? serviceData.name : 'Custom Service',
-          agreed_price: agreedPrice
+          agreed_price: agreedPrice,
+          quantity
         });
       }
     }

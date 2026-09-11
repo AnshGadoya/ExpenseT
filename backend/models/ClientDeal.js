@@ -3,7 +3,8 @@ import mongoose from 'mongoose';
 const dealServiceSchema = new mongoose.Schema({
   service_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Service', required: true },
   service_name: { type: String, default: '' },
-  agreed_price: { type: Number, default: 0 }
+  agreed_price: { type: Number, default: 0 },
+  quantity: { type: Number, default: 1 }
 }, { _id: true });
 
 dealServiceSchema.set('toJSON', {

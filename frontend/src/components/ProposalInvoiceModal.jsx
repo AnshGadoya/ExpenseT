@@ -330,7 +330,9 @@ export default function ProposalInvoiceModal({ isOpen, onClose, deal, mode = 'pr
                 <tbody className="divide-y divide-slate-200">
                   {servicesList.map((srv, idx) => (
                     <tr key={idx} className="hover:bg-slate-50">
-                      <td className="py-2.5 px-3 font-bold text-slate-900">{srv.service_name || srv.name}</td>
+                      <td className="py-2.5 px-3 font-bold text-slate-900">
+                        {srv.service_name || srv.name} {srv.quantity > 1 && <span className="text-indigo-600 font-extrabold">(Qty: {srv.quantity})</span>}
+                      </td>
                       <td className="py-2.5 px-3 text-slate-600 text-[11px]">
                         {srv.service_category || 'Comprehensive digital growth, content creation & social media management'}
                       </td>

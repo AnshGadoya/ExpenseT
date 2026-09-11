@@ -90,6 +90,7 @@ export default function DealsView({
     payment_mode: 'GPay',
     payment_reference: '',
     selected_service_ids: [],
+    service_quantities: {},
     plan_cycle: '1 Month Retainer',
     notes: '',
   });
@@ -108,6 +109,7 @@ export default function DealsView({
     payment_mode: 'GPay',
     payment_reference: '',
     selected_service_ids: [],
+    service_quantities: {},
     notes: '',
   });
 
@@ -161,10 +163,26 @@ export default function DealsView({
     }
   }, [selectedDealForRenewal]);
 
+  useEffect(() => {
+    if (isAddOpen && !editingDeal && (!formData.selected_service_ids || formData.selected_service_ids.length === 0)) {
+      const initialServices = (services && services.length > 0) ? [services[0].id] : [];
+      const initialPrice = (services && services.length > 0 && services[0].base_price) ? Number(services[0].base_price) : '';
+      const initialQuantities = (services && services.length > 0) ? { [services[0].id]: 1 } : {};
+
+      setFormData(prev => ({
+        ...prev,
+        total_deal_amount: prev.total_deal_amount || initialPrice,
+        selected_service_ids: prev.selected_service_ids?.length ? prev.selected_service_ids : initialServices,
+        service_quantities: prev.service_quantities && Object.keys(prev.service_quantities).length ? prev.service_quantities : initialQuantities
+      }));
+    }
+  }, [isAddOpen, services]);
+
   const handleOpenAdd = () => {
     setEditingDeal(null);
     const initialServices = services.length > 0 ? [services[0].id] : [];
     const initialPrice = services.length > 0 && services[0].base_price ? Number(services[0].base_price) : '';
+    const initialQuantities = services.length > 0 ? { [services[0].id]: 1 } : {};
 
     setFormData({
       client_name: '',
@@ -179,6 +197,7 @@ export default function DealsView({
       payment_mode: 'GPay',
       payment_reference: '',
       selected_service_ids: initialServices,
+      service_quantities: initialQuantities,
       notes: '',
     });
     setIsAddOpen(true);
@@ -186,6 +205,13 @@ export default function DealsView({
 
   const handleOpenEdit = (deal) => {
     setEditingDeal(deal);
+    const serviceIds = deal.services ? deal.services.map(s => s.service_id) : [];
+    const quantities = {};
+    if (deal.services) {
+      deal.services.forEach(s => {
+        quantities[s.service_id] = s.quantity || 1;
+      });
+    }
     setFormData({
       client_name: deal.client_name,
       client_phone: deal.client_phone || '',
@@ -198,7 +224,8 @@ export default function DealsView({
       advance_amount: deal.received_amount,
       payment_mode: 'GPay',
       payment_reference: '',
-      selected_service_ids: deal.services ? deal.services.map(s => s.service_id) : [],
+      selected_service_ids: serviceIds,
+      service_quantities: quantities,
       notes: deal.notes || '',
     });
     setIsAddOpen(true);
@@ -208,7 +235,13 @@ export default function DealsView({
   const handleOpenRenew = (deal) => {
     setRenewSourceDeal(deal);
     const existingServiceIds = deal.services ? deal.services.map(s => s.service_id) : [];
-    
+    const quantities = {};
+    if (deal.services) {
+      deal.services.forEach(s => {
+        quantities[s.service_id] = s.quantity || 1;
+      });
+    }
+
     setRenewFormData({
       client_name: deal.client_name,
       client_phone: deal.client_phone || '',
@@ -221,6 +254,7 @@ export default function DealsView({
       payment_mode: 'GPay',
       payment_reference: '',
       selected_service_ids: existingServiceIds,
+      service_quantities: quantities,
       plan_cycle: '1 Month Retainer Extension',
       notes: `Service Renewal for ${deal.client_name} (${deal.company_name || 'Client'}) • 1 Month Extension`,
     });
@@ -229,38 +263,44 @@ export default function DealsView({
 
   // Check if selected services contain Video Shoot / Reel quantity service
   const isReelServiceSelected = (serviceIds = []) => {
-    return serviceIds.some(id => {
-      const s = services.find(srv => srv.id === id);
+    const safeIds = Array.isArray(serviceIds) ? serviceIds : [];
+    return safeIds.some(id => {
+      const s = (services || []).find(srv => srv.id === id);
       if (!s) return false;
       const name = (s.name || '').toLowerCase();
       return name.includes('video shoot') || name.includes('reel');
     });
   };
 
-  // Calculate 1-Month Base Sum of selected services
-  const calculateOneMonthSum = (serviceIds) => {
-    return serviceIds.reduce((total, id) => {
-      const s = services.find(srv => srv.id === id);
-      return total + (s ? Number(s.base_price || 0) : 0);
+  // Calculate 1-Month Base Sum of selected services with quantities
+  const calculateOneMonthSum = (serviceIds = [], quantities = {}) => {
+    const safeIds = Array.isArray(serviceIds) ? serviceIds : [];
+    const safeQtys = quantities || {};
+    return safeIds.reduce((total, id) => {
+      const s = (services || []).find(srv => srv.id === id);
+      const qty = Math.max(1, Number(safeQtys[id]) || 1);
+      return total + (s ? Number(s.base_price || 0) * qty : 0);
     }, 0);
   };
 
-  // Calculate Total Deal Price for selected Duration
-  const calculateDealPrice = (serviceIds, durationMonths = 1) => {
+  // Calculate Total Deal Price for selected Duration & Service Quantities
+  const calculateDealPrice = (serviceIds = [], durationMonths = 1, quantities = {}) => {
+    const safeIds = Array.isArray(serviceIds) ? serviceIds : [];
+    const safeQtys = quantities || {};
     const dur = Number(durationMonths) || 1;
     let totalSum = 0;
 
-    serviceIds.forEach(id => {
-      const s = services.find(srv => srv.id === id);
+    safeIds.forEach(id => {
+      const s = (services || []).find(srv => srv.id === id);
       if (!s) return;
       
-      const price = Number(s.base_price || 0);
+      const qty = Math.max(1, Number(safeQtys[id]) || 1);
+      const price = Number(s.base_price || 0) * qty;
 
       // Special Meta Ads 3-Month Offer Rule: ₹12,000 for 3 months instead of ₹18,000
-      if (s.name.includes('Meta Ads') && dur === 3) {
-        totalSum += 12000;
+      if (s.name && s.name.includes('Meta Ads') && dur === 3) {
+        totalSum += 12000 * qty;
       } else {
-        // Multiply 1-month service price by selected duration months (1, 2, 3, 6, 12)
         totalSum += price * dur;
       }
     });
@@ -275,12 +315,37 @@ export default function DealsView({
         ? prev.selected_service_ids.filter(id => id !== serviceId)
         : [...prev.selected_service_ids, serviceId];
 
-      const sum = calculateDealPrice(updated, prev.duration_months);
+      const newQtys = { ...prev.service_quantities };
+      if (!exists && !newQtys[serviceId]) {
+        newQtys[serviceId] = 1;
+      }
+
+      const sum = calculateDealPrice(updated, prev.duration_months, newQtys);
 
       return { 
         ...prev, 
         selected_service_ids: updated, 
+        service_quantities: newQtys,
         total_deal_amount: sum > 0 ? sum : '' 
+      };
+    });
+  };
+
+  const updateServiceQuantity = (serviceId, newQty) => {
+    const qty = Math.max(1, parseInt(newQty) || 1);
+    setFormData(prev => {
+      const newQtys = { ...prev.service_quantities, [serviceId]: qty };
+      const updatedIds = prev.selected_service_ids.includes(serviceId)
+        ? prev.selected_service_ids
+        : [...prev.selected_service_ids, serviceId];
+
+      const sum = calculateDealPrice(updatedIds, prev.duration_months, newQtys);
+
+      return {
+        ...prev,
+        selected_service_ids: updatedIds,
+        service_quantities: newQtys,
+        total_deal_amount: sum > 0 ? sum : ''
       };
     });
   };
@@ -292,12 +357,37 @@ export default function DealsView({
         ? prev.selected_service_ids.filter(id => id !== serviceId)
         : [...prev.selected_service_ids, serviceId];
 
-      const sum = calculateDealPrice(updated, prev.duration_months || 1);
+      const newQtys = { ...prev.service_quantities };
+      if (!exists && !newQtys[serviceId]) {
+        newQtys[serviceId] = 1;
+      }
+
+      const sum = calculateDealPrice(updated, prev.duration_months || 1, newQtys);
 
       return { 
         ...prev, 
         selected_service_ids: updated, 
+        service_quantities: newQtys,
         total_deal_amount: sum > 0 ? sum : prev.total_deal_amount 
+      };
+    });
+  };
+
+  const updateRenewServiceQuantity = (serviceId, newQty) => {
+    const qty = Math.max(1, parseInt(newQty) || 1);
+    setRenewFormData(prev => {
+      const newQtys = { ...prev.service_quantities, [serviceId]: qty };
+      const updatedIds = prev.selected_service_ids.includes(serviceId)
+        ? prev.selected_service_ids
+        : [...prev.selected_service_ids, serviceId];
+
+      const sum = calculateDealPrice(updatedIds, prev.duration_months || 1, newQtys);
+
+      return {
+        ...prev,
+        selected_service_ids: updatedIds,
+        service_quantities: newQtys,
+        total_deal_amount: sum > 0 ? sum : prev.total_deal_amount
       };
     });
   };
@@ -336,7 +426,15 @@ export default function DealsView({
         client_name: formData.client_name.trim(),
         company_name: formData.company_name.trim(),
         client_phone: formData.client_phone.trim(),
-        services: formData.selected_service_ids.map(id => ({ service_id: id })),
+        services: formData.selected_service_ids.map(id => {
+          const s = services.find(srv => srv.id === id);
+          const qty = Math.max(1, Number(formData.service_quantities?.[id]) || 1);
+          return {
+            service_id: id,
+            agreed_price: s ? Number(s.base_price) * qty : 0,
+            quantity: qty
+          };
+        }),
       };
 
       if (editingDeal) {
@@ -372,7 +470,15 @@ export default function DealsView({
         payment_mode: renewFormData.payment_mode,
         payment_reference: renewFormData.payment_reference,
         notes: `[RENEWAL] ${renewFormData.plan_cycle}: ${renewFormData.notes}`,
-        services: renewFormData.selected_service_ids.map(id => ({ service_id: id })),
+        services: renewFormData.selected_service_ids.map(id => {
+          const s = services.find(srv => srv.id === id);
+          const qty = Math.max(1, Number(renewFormData.service_quantities?.[id]) || 1);
+          return {
+            service_id: id,
+            agreed_price: s ? Number(s.base_price) * qty : 0,
+            quantity: qty
+          };
+        }),
       };
 
       await api.createDeal(payload);
@@ -809,7 +915,7 @@ export default function DealsView({
                           className="px-2 py-0.5 text-[11px] font-semibold bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-800/80 rounded-lg flex items-center gap-1"
                         >
                           <Sparkles className="w-3 h-3 text-indigo-500" />
-                          {s.service_name}
+                          {s.service_name} {s.quantity > 1 && <span className="font-extrabold text-indigo-900 dark:text-indigo-100 bg-indigo-200/60 dark:bg-indigo-800/60 px-1 rounded text-[10px]">x{s.quantity}</span>}
                         </span>
                       ))
                     ) : (
@@ -1070,88 +1176,35 @@ export default function DealsView({
             </div>
 
             <div>
-              {isReelServiceSelected(formData.selected_service_ids) ? (
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1 flex items-center justify-between">
-                    <span>Number of Reels (Quantity) <span className="text-indigo-600 dark:text-indigo-400">*</span></span>
-                    <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold bg-indigo-50 dark:bg-indigo-950/80 px-2 py-0.5 rounded border border-indigo-200 dark:border-indigo-800">₹1,499 / Per Reel</span>
-                  </label>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <input
-                      type="number"
-                      min="1"
-                      max="100"
-                      required
-                      value={formData.duration_months || 1}
-                      onChange={(e) => {
-                        const newQty = Math.max(1, parseInt(e.target.value) || 1);
-                        const updatedSum = calculateDealPrice(formData.selected_service_ids, newQty);
-                        setFormData(prev => ({
-                          ...prev,
-                          duration_months: newQty,
-                          total_deal_amount: updatedSum > 0 ? updatedSum : prev.total_deal_amount
-                        }));
-                      }}
-                      className="w-24 bg-slate-50 dark:bg-slate-800 border border-indigo-400 dark:border-indigo-600 rounded-xl px-3 py-2 text-slate-900 dark:text-white text-xs font-black focus:outline-none focus:border-indigo-600 shadow-2xs"
-                    />
-                    <div className="flex flex-wrap gap-1">
-                      {[1, 2, 3, 5, 10].map(qty => (
-                        <button
-                          key={qty}
-                          type="button"
-                          onClick={() => {
-                            const updatedSum = calculateDealPrice(formData.selected_service_ids, qty);
-                            setFormData(prev => ({
-                              ...prev,
-                              duration_months: qty,
-                              total_deal_amount: updatedSum > 0 ? updatedSum : prev.total_deal_amount
-                            }));
-                          }}
-                          className={`px-2.5 py-1 text-xs rounded-lg font-bold transition-all ${
-                            (formData.duration_months || 1) === qty
-                              ? 'bg-indigo-600 text-white shadow-xs'
-                              : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-indigo-100 dark:hover:bg-slate-600'
-                          }`}
-                        >
-                          {qty} {qty === 1 ? 'Reel' : 'Reels'}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Contract Term / Duration <span className="text-indigo-600 dark:text-indigo-400">*</span>
-                  </label>
-                  <select
-                    value={formData.duration_months || 1}
-                    onChange={(e) => {
-                      const newDur = Number(e.target.value);
-                      const updatedSum = calculateDealPrice(formData.selected_service_ids, newDur);
-                      setFormData(prev => ({
-                        ...prev,
-                        duration_months: newDur,
-                        total_deal_amount: updatedSum > 0 ? updatedSum : prev.total_deal_amount
-                      }));
-                    }}
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-white text-xs font-bold focus:outline-none focus:border-indigo-600"
-                  >
-                    <option value={1}>1 Month Membership (Standard 30 Days)</option>
-                    <option value={2}>2 Months Membership (60 Days)</option>
-                    <option value={3}>3 Months Membership (90 Days - Special Offer)</option>
-                    <option value={6}>6 Months Membership (180 Days)</option>
-                    <option value={12}>1 Year Membership (365 Days)</option>
-                  </select>
-                </div>
-              )}
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                Contract Term / Duration <span className="text-indigo-600 dark:text-indigo-400">*</span>
+              </label>
+              <select
+                value={formData.duration_months || 1}
+                onChange={(e) => {
+                  const newDur = Number(e.target.value);
+                  const updatedSum = calculateDealPrice(formData.selected_service_ids, newDur, formData.service_quantities);
+                  setFormData(prev => ({
+                    ...prev,
+                    duration_months: newDur,
+                    total_deal_amount: updatedSum > 0 ? updatedSum : prev.total_deal_amount
+                  }));
+                }}
+                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-white text-xs font-bold focus:outline-none focus:border-indigo-600"
+              >
+                <option value={1}>1 Month Membership (Standard 30 Days)</option>
+                <option value={2}>2 Months Membership (60 Days)</option>
+                <option value={3}>3 Months Membership (90 Days - Special Offer)</option>
+                <option value={6}>6 Months Membership (180 Days)</option>
+                <option value={12}>1 Year Membership (365 Days)</option>
+              </select>
             </div>
           </div>
 
           {/* SPECIAL META ADS OFFER BANNER */}
-          {formData.selected_service_ids.some(id => {
-            const s = services.find(srv => srv.id === id);
-            return s && s.name.includes('Meta Ads');
+          {(formData.selected_service_ids || []).some(id => {
+            const s = (services || []).find(srv => srv.id === id);
+            return s && s.name && s.name.includes('Meta Ads');
           }) && formData.duration_months === 3 && (
             <div className="p-3 bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-amber-500/10 border border-amber-300 dark:border-amber-700/80 rounded-xl flex items-center gap-3 animate-pulse">
               <div className="p-2 bg-amber-500 text-white rounded-lg font-black text-xs shrink-0">
@@ -1168,49 +1221,82 @@ export default function DealsView({
             </div>
           )}
 
-          {/* Services Selector */}
+          {/* Services Selector with Per-Service Quantity (Qty) Controls */}
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
-                Services Included (Select to auto-calculate price)
+                Services & Quantities (Select & set Qty per service)
               </label>
               <span className="text-[11px] font-extrabold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950 px-2.5 py-0.5 rounded-md border border-indigo-200 dark:border-indigo-800">
-                {isReelServiceSelected(formData.selected_service_ids) ? (
-                  <>
-                    Unit Price: {formatCurrency(calculateOneMonthSum(formData.selected_service_ids))}
-                    <span className="text-emerald-700 dark:text-emerald-300 ml-1.5">
-                      × {formData.duration_months || 1} {(formData.duration_months || 1) === 1 ? 'Reel' : 'Reels'} = {formatCurrency(calculateDealPrice(formData.selected_service_ids, formData.duration_months))}
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    1 Mo Price: {formatCurrency(calculateOneMonthSum(formData.selected_service_ids))}
-                    {formData.duration_months > 1 && (
-                      <span className="text-emerald-700 dark:text-emerald-300 ml-1.5">
-                        × {formData.duration_months} Months = {formatCurrency(calculateDealPrice(formData.selected_service_ids, formData.duration_months))}
-                      </span>
-                    )}
-                  </>
+                1 Mo Base Sum: {formatCurrency(calculateOneMonthSum(formData.selected_service_ids, formData.service_quantities))}
+                {formData.duration_months > 1 && (
+                  <span className="text-emerald-700 dark:text-emerald-300 ml-1.5">
+                    × {formData.duration_months} Months = {formatCurrency(calculateDealPrice(formData.selected_service_ids, formData.duration_months, formData.service_quantities))}
+                  </span>
                 )}
               </span>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-44 overflow-y-auto pr-1">
-              {services.map((serv) => {
-                const isSelected = formData.selected_service_ids.includes(serv.id);
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-56 overflow-y-auto pr-1">
+              {(services || []).map((serv) => {
+                const isSelected = (formData.selected_service_ids || []).includes(serv.id);
+                const currentQty = formData.service_quantities?.[serv.id] || 1;
+                const servName = serv.name || '';
                 return (
-                  <button
-                    type="button"
+                  <div
                     key={serv.id}
                     onClick={() => toggleServiceSelection(serv.id)}
-                    className={`flex items-center justify-between p-2.5 rounded-xl border text-left text-xs transition-all ${
+                    className={`flex items-center justify-between p-2.5 rounded-xl border text-left text-xs transition-all cursor-pointer ${
                       isSelected
-                        ? 'bg-indigo-50 dark:bg-indigo-950/80 border-indigo-400 dark:border-indigo-600 text-indigo-900 dark:text-indigo-200 font-bold'
+                        ? 'bg-indigo-50 dark:bg-indigo-950/80 border-indigo-400 dark:border-indigo-600 text-indigo-900 dark:text-indigo-200 font-bold shadow-2xs'
                         : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-600'
                     }`}
                   >
-                    <span className="truncate mr-2">{serv.name}</span>
-                    <span className="font-mono text-[11px] shrink-0 text-slate-500 dark:text-slate-400">{formatCurrency(serv.base_price)}</span>
-                  </button>
+                    <div className="flex items-center gap-2 min-w-0 pr-1">
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => toggleServiceSelection(serv.id)}
+                        className="w-3.5 h-3.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 shrink-0"
+                      />
+                      <div className="truncate">
+                        <p className="truncate font-semibold">{servName}</p>
+                        <p className="text-[10px] font-mono text-slate-500 dark:text-slate-400">
+                          {formatCurrency(serv.base_price)} {servName.toLowerCase().includes('reel') || servName.toLowerCase().includes('video shoot') ? '/ Reel' : '/ Mo'}
+                        </p>
+                      </div>
+                    </div>
+
+                    {isSelected && (
+                      <div className="flex items-center gap-1 bg-white dark:bg-slate-900 border border-indigo-300 dark:border-indigo-700 rounded-lg p-0.5 shadow-2xs shrink-0" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          type="button"
+                          onClick={() => updateServiceQuantity(serv.id, Math.max(1, currentQty - 1))}
+                          className="w-5 h-5 flex items-center justify-center font-black text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded transition-colors"
+                          title="Decrease Qty"
+                        >
+                          -
+                        </button>
+                        <input
+                          type="number"
+                          min="1"
+                          max="100"
+                          value={currentQty}
+                          onChange={(e) => updateServiceQuantity(serv.id, e.target.value)}
+                          className="w-8 text-center text-xs font-black bg-transparent text-indigo-600 dark:text-indigo-400 focus:outline-none font-mono"
+                          title="Service Quantity"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => updateServiceQuantity(serv.id, currentQty + 1)}
+                          className="w-5 h-5 flex items-center justify-center font-black text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded transition-colors"
+                          title="Increase Qty"
+                        >
+                          +
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 );
               })}
             </div>
@@ -1623,29 +1709,69 @@ export default function DealsView({
                   Update Plan & Services for this New Term
                 </label>
                 <span className="text-[11px] font-extrabold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950 px-2 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-800">
-                  Package Total: {formatCurrency(calculateDealPrice(renewFormData.selected_service_ids, renewFormData.duration_months || 1))}
+                  Package Total: {formatCurrency(calculateDealPrice(renewFormData.selected_service_ids, renewFormData.duration_months || 1, renewFormData.service_quantities))}
                 </span>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-1">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-56 overflow-y-auto pr-1">
                 {services.map((serv) => {
                   const isSelected = renewFormData.selected_service_ids.includes(serv.id);
+                  const currentQty = renewFormData.service_quantities?.[serv.id] || 1;
                   return (
-                    <button
-                      type="button"
+                    <div
                       key={serv.id}
                       onClick={() => toggleRenewServiceSelection(serv.id)}
-                      className={`flex items-center justify-between p-2.5 rounded-xl border text-left text-xs transition-all ${
+                      className={`flex items-center justify-between p-2.5 rounded-xl border text-left text-xs transition-all cursor-pointer ${
                         isSelected
-                          ? 'bg-emerald-50 dark:bg-emerald-950/80 border-emerald-500 dark:border-emerald-600 text-emerald-900 dark:text-emerald-200 font-bold'
+                          ? 'bg-emerald-50 dark:bg-emerald-950/80 border-emerald-500 dark:border-emerald-600 text-emerald-900 dark:text-emerald-200 font-bold shadow-2xs'
                           : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-600'
                       }`}
                     >
-                      <span className="truncate mr-2">{serv.name}</span>
-                      <span className="font-mono text-[11px] shrink-0 text-slate-500 dark:text-slate-400">
-                        {formatCurrency(serv.base_price)}
-                      </span>
-                    </button>
+                      <div className="flex items-center gap-2 min-w-0 pr-1">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleRenewServiceSelection(serv.id)}
+                          className="w-3.5 h-3.5 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 shrink-0"
+                        />
+                        <div className="truncate">
+                          <p className="truncate font-semibold">{serv.name}</p>
+                          <p className="text-[10px] font-mono text-slate-500 dark:text-slate-400">
+                            {formatCurrency(serv.base_price)} {serv.name.toLowerCase().includes('reel') || serv.name.toLowerCase().includes('video shoot') ? '/ Reel' : '/ Mo'}
+                          </p>
+                        </div>
+                      </div>
+
+                      {isSelected && (
+                        <div className="flex items-center gap-1 bg-white dark:bg-slate-900 border border-emerald-300 dark:border-emerald-700 rounded-lg p-0.5 shadow-2xs shrink-0" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            type="button"
+                            onClick={() => updateRenewServiceQuantity(serv.id, Math.max(1, currentQty - 1))}
+                            className="w-5 h-5 flex items-center justify-center font-black text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded transition-colors"
+                            title="Decrease Qty"
+                          >
+                            -
+                          </button>
+                          <input
+                            type="number"
+                            min="1"
+                            max="100"
+                            value={currentQty}
+                            onChange={(e) => updateRenewServiceQuantity(serv.id, e.target.value)}
+                            className="w-8 text-center text-xs font-black bg-transparent text-emerald-600 dark:text-emerald-400 focus:outline-none font-mono"
+                            title="Service Quantity"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => updateRenewServiceQuantity(serv.id, currentQty + 1)}
+                            className="w-5 h-5 flex items-center justify-center font-black text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded transition-colors"
+                            title="Increase Qty"
+                          >
+                            +
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   );
                 })}
               </div>
