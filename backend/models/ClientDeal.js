@@ -32,12 +32,21 @@ const clientDealSchema = new mongoose.Schema({
   status: { type: String, default: 'active' },
   notes: { type: String, default: null },
   services: [dealServiceSchema],
+  root_deal_id: { type: mongoose.Schema.Types.ObjectId, ref: 'ClientDeal', default: null },
+  previous_deal_id: { type: mongoose.Schema.Types.ObjectId, ref: 'ClientDeal', default: null },
+  next_deal_id: { type: mongoose.Schema.Types.ObjectId, ref: 'ClientDeal', default: null },
+  renewal_number: { type: Number, default: 0 },
+  is_current: { type: Boolean, default: true },
+  renewal_status: { type: String, default: 'none' },
   created_at: { type: Date, default: Date.now }
 }, {
   toJSON: {
     virtuals: true,
     transform: (doc, ret) => {
       ret.id = ret._id.toString();
+      if (ret.root_deal_id) ret.root_deal_id = ret.root_deal_id.toString();
+      if (ret.previous_deal_id) ret.previous_deal_id = ret.previous_deal_id.toString();
+      if (ret.next_deal_id) ret.next_deal_id = ret.next_deal_id.toString();
       delete ret.__v;
       return ret;
     }

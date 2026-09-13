@@ -33,7 +33,7 @@ export default function ServicesMaster({ services, onRefreshServices, darkMode }
       name: serv.name,
       description: serv.description || '',
       base_price: serv.base_price,
-      category: serv.category || 'Production',
+      category: serv.category || 'Specialized Creative Solutions',
       pricing_type: serv.pricing_type || 'month_wise',
     });
     setIsModalOpen(true);

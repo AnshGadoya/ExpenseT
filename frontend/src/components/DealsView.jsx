@@ -25,7 +25,11 @@ import {
   Lock,
   CheckCheck,
   FileText,
-  Receipt
+  Receipt,
+  TrendingUp,
+  TrendingDown,
+  Layers,
+  User
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { api } from '../utils/api';
@@ -55,13 +59,19 @@ export default function DealsView({
   const [deals, setDeals] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Filters
+  // Filters & View Mode
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [viewMode, setViewMode] = useState('current'); // 'current' (latest active contract per client) | 'all' (all cycles)
 
   // Modals state
   const [editingDeal, setEditingDeal] = useState(null);
   const [paymentLedgerDeal, setPaymentLedgerDeal] = useState(null);
+
+  // Client History & Renewal Timeline Modal State
+  const [historyModalDeal, setHistoryModalDeal] = useState(null);
+  const [clientHistoryData, setClientHistoryData] = useState(null);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   // Proposal & Invoice Generator Modal State
   const [proposalModalDeal, setProposalModalDeal] = useState(null);
@@ -128,6 +138,7 @@ export default function DealsView({
       const params = {};
       if (search) params.search = search;
       if (statusFilter !== 'all') params.status = statusFilter;
+      if (viewMode === 'current') params.current_only = 'true';
 
       const data = await api.getDeals(params);
       const validDeals = Array.isArray(data) ? data : [];
@@ -145,9 +156,24 @@ export default function DealsView({
     }
   };
 
+  const handleOpenClientHistory = async (deal) => {
+    setHistoryModalDeal(deal);
+    setLoadingHistory(true);
+    setClientHistoryData(null);
+    try {
+      const data = await api.getDealHistory(deal.id);
+      setClientHistoryData(data);
+    } catch (err) {
+      console.error('Failed to load client history:', err);
+      alert('Failed to load client history: ' + err.message);
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
   useEffect(() => {
     loadDeals();
-  }, [search, statusFilter]);
+  }, [search, statusFilter, viewMode]);
 
   useEffect(() => {
     if (selectedDealForPayment) {
@@ -272,7 +298,7 @@ export default function DealsView({
     });
   };
 
-  // Calculate 1-Month Base Sum of selected services (Month-wise at base rate + Qty-wise at total unit rate)
+  // Calculate 1-Month Base Sum of selected services
   const calculateOneMonthSum = (serviceIds = [], quantities = {}) => {
     const safeIds = Array.isArray(serviceIds) ? serviceIds : [];
     const safeQtys = quantities || {};
@@ -285,7 +311,7 @@ export default function DealsView({
     }, 0);
   };
 
-  // Calculate Total Deal Price based on Service Pricing Mode (Month-wise scales with duration; Qty-wise is fixed by quantity)
+  // Calculate Total Deal Price based on Service Pricing Mode (Month-wise scales with duration; Qty-wise scales with quantity)
   const calculateDealPrice = (serviceIds = [], durationMonths = 1, quantities = {}) => {
     const safeIds = Array.isArray(serviceIds) ? serviceIds : [];
     const safeQtys = quantities || {};
@@ -299,11 +325,11 @@ export default function DealsView({
       const isQtyWise = (s.pricing_type || 'month_wise') === 'qty_wise';
 
       if (isQtyWise) {
-        // Qty-wise: Billed strictly per quantity; does NOT scale with duration_months
+        // Qty-wise: Fixed unit deliverable - Billed per quantity
         const qty = Math.max(1, Number(safeQtys[id]) || 1);
         totalSum += Number(s.base_price || 0) * qty;
       } else {
-        // Month-wise: Billed per month based on contract duration (Quantity multiplier locked to 1)
+        // Month-wise: Retainer service - Billed per month across contract duration (Qty is 1)
         if (s.name && s.name.includes('Meta Ads') && dur === 3) {
           totalSum += 12000;
         } else {
@@ -477,6 +503,7 @@ export default function DealsView({
         payment_mode: renewFormData.payment_mode,
         payment_reference: renewFormData.payment_reference,
         notes: `[RENEWAL] ${renewFormData.plan_cycle}: ${renewFormData.notes}`,
+        previous_deal_id: renewSourceDeal?.id,
         services: renewFormData.selected_service_ids.map(id => {
           const s = services.find(srv => srv.id === id);
           const qty = Math.max(1, Number(renewFormData.service_quantities?.[id]) || 1);
@@ -499,9 +526,53 @@ export default function DealsView({
       setIsRenewModalOpen(false);
       setPaymentLedgerDeal(null);
       loadDeals();
+      if (historyModalDeal) {
+        handleOpenClientHistory(historyModalDeal);
+      }
     } catch (err) {
       alert('Failed to process deal renewal: ' + err.message);
     }
+  };
+
+  // Helper to compute live comparison between previous deal and renewal form
+  const getRenewalComparison = () => {
+    if (!renewSourceDeal) return null;
+    const prevServices = renewSourceDeal.services || [];
+    const prevQtys = {};
+    prevServices.forEach(s => {
+      prevQtys[s.service_id] = s.quantity || 1;
+    });
+
+    const diffs = [];
+    (renewFormData.selected_service_ids || []).forEach(servId => {
+      const s = (services || []).find(srv => srv.id === servId);
+      const name = s ? s.name : 'Service';
+      const newQty = Math.max(1, Number(renewFormData.service_quantities?.[servId]) || 1);
+      const prevQty = prevQtys[servId];
+
+      if (prevQty !== undefined) {
+        const diff = newQty - prevQty;
+        if (diff > 0) {
+          diffs.push({ type: 'upgrade', text: `⬆️ ${name}: upgraded from ${prevQty} ➔ ${newQty} (+${diff})` });
+        } else if (diff < 0) {
+          diffs.push({ type: 'downgrade', text: `⬇️ ${name}: reduced from ${prevQty} ➔ ${newQty} (${diff})` });
+        }
+      } else {
+        diffs.push({ type: 'added', text: `➕ Added new: ${name} (x${newQty})` });
+      }
+    });
+
+    prevServices.forEach(ps => {
+      if (!renewFormData.selected_service_ids.includes(ps.service_id)) {
+        diffs.push({ type: 'removed', text: `❌ Removed: ${ps.service_name || 'Service'}` });
+      }
+    });
+
+    const prevPrice = Number(renewSourceDeal.total_deal_amount || 0);
+    const newPrice = Number(renewFormData.total_deal_amount || 0);
+    const priceDiff = newPrice - prevPrice;
+
+    return { diffs, priceDiff, prevPrice, newPrice };
   };
 
   // Open Mark as Lost Modal
@@ -739,7 +810,7 @@ export default function DealsView({
       <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-2xs flex flex-col sm:flex-row items-center justify-between gap-4 transition-colors">
         
         {/* Search */}
-        <div className="relative w-full sm:w-80">
+        <div className="relative w-full sm:w-72">
           <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
           <input
             type="text"
@@ -750,30 +821,63 @@ export default function DealsView({
           />
         </div>
 
-        {/* Status Toggle (All, Active, Closed/Completed, Lost) */}
-        <div className="flex items-center gap-1.5 w-full sm:w-auto overflow-x-auto">
-          {[
-            { id: 'all', label: 'All Deals' },
-            { id: 'active', label: `Pending Active (${activeCount})` },
-            { id: 'completed', label: `Closed & Paid (${closedCount})` },
-            { id: 'lost', label: `Lost / Bad Debt ${lostCount > 0 ? `(${lostCount})` : ''}`, isDanger: true },
-          ].map((s) => (
+        {/* View Mode & Status Controls */}
+        <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto justify-end">
+          {/* View Mode Toggle (Current Clients vs All Cycles) */}
+          <div className="flex items-center p-1 bg-slate-100 dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700 shrink-0">
             <button
-              key={s.id}
-              onClick={() => setStatusFilter(s.id)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-colors ${
-                statusFilter === s.id
-                  ? s.isDanger
-                    ? 'bg-rose-600 text-white shadow-2xs'
-                    : 'bg-indigo-600 text-white shadow-2xs'
-                  : s.isDanger && lostCount > 0
-                  ? 'bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-900 border border-rose-200 dark:border-rose-800'
-                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white'
+              type="button"
+              onClick={() => setViewMode('current')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                viewMode === 'current'
+                  ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-2xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
+              title="Show current active/latest contract per client (prevents duplicate client cards)"
             >
-              {s.label}
+              <User className="w-3.5 h-3.5" />
+              <span>Current Clients</span>
             </button>
-          ))}
+            <button
+              type="button"
+              onClick={() => setViewMode('all')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                viewMode === 'all'
+                  ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-2xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+              title="Show all contract cycles ever created"
+            >
+              <Layers className="w-3.5 h-3.5" />
+              <span>All Cycles</span>
+            </button>
+          </div>
+
+          {/* Status Toggle (All, Active, Closed/Completed, Lost) */}
+          <div className="flex items-center gap-1.5 overflow-x-auto">
+            {[
+              { id: 'all', label: 'All Deals' },
+              { id: 'active', label: `Pending Active (${activeCount})` },
+              { id: 'completed', label: `Closed & Paid (${closedCount})` },
+              { id: 'lost', label: `Lost / Bad Debt ${lostCount > 0 ? `(${lostCount})` : ''}`, isDanger: true },
+            ].map((s) => (
+              <button
+                key={s.id}
+                onClick={() => setStatusFilter(s.id)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-colors ${
+                  statusFilter === s.id
+                    ? s.isDanger
+                      ? 'bg-rose-600 text-white shadow-2xs'
+                      : 'bg-indigo-600 text-white shadow-2xs'
+                    : s.isDanger && lostCount > 0
+                    ? 'bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-900 border border-rose-200 dark:border-rose-800'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
         </div>
 
       </div>
@@ -824,11 +928,30 @@ export default function DealsView({
                   {/* Top Bar: Client & Status Badge */}
                   <div className="flex items-start justify-between gap-3 mb-3">
                     <div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <h3 className="text-base font-black text-slate-900 dark:text-white">{deal.client_name}</h3>
                         {deal.company_name && (
                           <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold border border-slate-200 dark:border-slate-700">
                             {deal.company_name}
+                          </span>
+                        )}
+
+                        {/* Renewal Number / Cycle Badge */}
+                        {deal.renewal_number > 0 ? (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 font-extrabold border border-indigo-200 dark:border-indigo-800 flex items-center gap-1">
+                            <RotateCcw className="w-3 h-3 text-indigo-600 dark:text-indigo-400" />
+                            Renewal #{deal.renewal_number} (Cycle {deal.renewal_number + 1})
+                          </span>
+                        ) : deal.client_total_cycles > 1 ? (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold border border-slate-200 dark:border-slate-700 flex items-center gap-1">
+                            🌱 Initial Cycle
+                          </span>
+                        ) : null}
+
+                        {deal.renewal_status === 'renewed' && (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 font-bold border border-emerald-200 dark:border-emerald-800 flex items-center gap-1">
+                            <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                            Renewed
                           </span>
                         )}
                       </div>
@@ -982,9 +1105,26 @@ export default function DealsView({
 
                 {/* Bottom Actions Bar */}
                 <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-slate-100 dark:border-slate-800 shrink-0">
-                  <div className="flex items-center gap-1 text-slate-500 dark:text-slate-400 text-xs font-medium shrink-0">
-                    <History className="w-3.5 h-3.5" />
-                    <span>{deal.payments ? deal.payments.length : 0} payments</span>
+                  <div className="flex items-center gap-2">
+                    {/* View Client History Button */}
+                    <button
+                      onClick={() => handleOpenClientHistory(deal)}
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900 border border-indigo-200 dark:border-indigo-800 text-xs font-bold transition-all shadow-2xs group"
+                      title="View complete client lifecycle, renewal timeline, and upgrade history"
+                    >
+                      <History className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 group-hover:rotate-[-30deg] transition-transform" />
+                      <span>Client History</span>
+                      {deal.client_total_cycles > 1 && (
+                        <span className="px-1.5 py-0.2 rounded-full bg-indigo-200 dark:bg-indigo-800 text-indigo-900 dark:text-indigo-100 text-[10px] font-extrabold">
+                          {deal.client_total_cycles}
+                        </span>
+                      )}
+                    </button>
+
+                    <div className="hidden sm:flex items-center gap-1 text-slate-400 dark:text-slate-500 text-[11px] font-mono">
+                      <span>•</span>
+                      <span>{deal.payments ? deal.payments.length : 0} pay</span>
+                    </div>
                   </div>
 
                   <div className="flex flex-wrap items-center justify-end gap-1.5 min-w-0">
@@ -1717,6 +1857,60 @@ export default function DealsView({
               </div>
             </div>
 
+            {/* Previous Term Recap & Live Upgrade Comparison */}
+            {(() => {
+              const comp = getRenewalComparison();
+              return (
+                <div className="space-y-2">
+                  {/* Previous Deliverables Recap */}
+                  <div className="p-3 bg-slate-50 dark:bg-slate-800/70 rounded-xl border border-slate-200 dark:border-slate-700 text-xs">
+                    <span className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                      📦 Previous Term Services Availed:
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {renewSourceDeal.services && renewSourceDeal.services.length > 0 ? (
+                        renewSourceDeal.services.map((s, idx) => (
+                          <span key={idx} className="px-2 py-0.5 rounded-md bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 text-[11px] font-medium">
+                            {s.service_name} {s.quantity > 1 && `(x${s.quantity})`} • ₹{Number(s.agreed_price || 0).toLocaleString('en-IN')}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="text-slate-400 italic">No previous service breakdown</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Live Comparison / Upgrade Alert */}
+                  {comp && comp.diffs.length > 0 && (
+                    <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 space-y-1.5">
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-800 dark:text-emerald-300">
+                        <TrendingUp className="w-4 h-4 text-emerald-600" />
+                        <span>Scope & Upgrade Changes in this Renewal:</span>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {comp.diffs.map((d, idx) => (
+                          <span 
+                            key={idx} 
+                            className={`px-2 py-0.5 rounded text-[11px] font-bold ${
+                              d.type === 'upgrade' 
+                                ? 'bg-emerald-100 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-700' 
+                                : d.type === 'added'
+                                ? 'bg-teal-100 dark:bg-teal-900 text-teal-800 dark:text-teal-200 border border-teal-300 dark:border-teal-700'
+                                : d.type === 'downgrade'
+                                ? 'bg-amber-100 dark:bg-amber-900 text-amber-800 dark:text-amber-200 border border-amber-300 dark:border-amber-700'
+                                : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
+                            }`}
+                          >
+                            {d.text}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
             {/* Service & Plan Updation */}
             <div>
               <div className="flex items-center justify-between mb-2">
@@ -2187,6 +2381,335 @@ export default function DealsView({
                   </div>
                 )}
               </div>
+            </div>
+
+          </div>
+        )}
+      </Modal>
+
+      {/* CLIENT LIFECYCLE & RENEWAL TIMELINE MODAL */}
+      <Modal
+        isOpen={Boolean(historyModalDeal)}
+        onClose={() => {
+          setHistoryModalDeal(null);
+          setClientHistoryData(null);
+        }}
+        title="Client Lifecycle & Renewal History"
+        maxWidth="max-w-4xl"
+      >
+        {historyModalDeal && (
+          <div className="space-y-6">
+            
+            {/* Header: Client Identity & Lifetime Metrics */}
+            <div className="p-5 bg-gradient-to-r from-indigo-900 via-indigo-800 to-purple-900 text-white rounded-2xl shadow-md space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-2xl bg-white/10 backdrop-blur-xs border border-white/20 flex items-center justify-center font-black text-xl text-white">
+                    {historyModalDeal.client_name.charAt(0).toUpperCase()}
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-lg font-black">{historyModalDeal.client_name}</h3>
+                      {historyModalDeal.company_name && (
+                        <span className="px-2 py-0.5 rounded-full bg-white/20 text-white text-xs font-semibold">
+                          {historyModalDeal.company_name}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-indigo-200 mt-0.5 flex flex-wrap items-center gap-2">
+                      {historyModalDeal.client_phone && (
+                        <span className="flex items-center gap-1 font-mono">
+                          <Phone className="w-3 h-3 opacity-80" /> {historyModalDeal.client_phone}
+                        </span>
+                      )}
+                      {historyModalDeal.client_email && (
+                        <span>• {historyModalDeal.client_email}</span>
+                      )}
+                      {historyModalDeal.insta_id && (
+                        <>
+                          <span>•</span>
+                          <a
+                            href={getInstaUrl(historyModalDeal.insta_id)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-pink-300 hover:text-pink-200 underline font-semibold"
+                          >
+                            @{historyModalDeal.insta_id.replace(/^@/, '')}
+                          </a>
+                        </>
+                      )}
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => {
+                    const d = historyModalDeal;
+                    setHistoryModalDeal(null);
+                    handleOpenRenew(d);
+                  }}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-white font-black text-xs shadow-sm transition-all active:scale-95 shrink-0"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  + Renew Next Cycle
+                </button>
+              </div>
+
+              {/* Lifetime Metrics Strip */}
+              {clientHistoryData && (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-3 border-t border-white/10 text-xs">
+                  <div className="bg-white/10 rounded-xl p-2.5 backdrop-blur-2xs">
+                    <span className="text-indigo-200 font-semibold block text-[11px]">Client Tenancy</span>
+                    <div className="text-lg font-black mt-0.5">
+                      {clientHistoryData.total_cycles} {clientHistoryData.total_cycles === 1 ? 'Cycle' : 'Cycles'}
+                    </div>
+                    <span className="text-[10px] text-indigo-300 font-medium">
+                      {clientHistoryData.renewals_count} {clientHistoryData.renewals_count === 1 ? 'Renewal' : 'Renewals'} Completed
+                    </span>
+                  </div>
+
+                  <div className="bg-white/10 rounded-xl p-2.5 backdrop-blur-2xs">
+                    <span className="text-indigo-200 font-semibold block text-[11px]">Lifetime Value (LTV)</span>
+                    <div className="text-lg font-black mt-0.5 text-indigo-100">
+                      {formatCurrency(clientHistoryData.lifetime_deal_value)}
+                    </div>
+                    <span className="text-[10px] text-indigo-300 font-medium">Total Billed Across Terms</span>
+                  </div>
+
+                  <div className="bg-white/10 rounded-xl p-2.5 backdrop-blur-2xs">
+                    <span className="text-emerald-200 font-semibold block text-[11px]">Total Paid (Collected)</span>
+                    <div className="text-lg font-black mt-0.5 text-emerald-300">
+                      {formatCurrency(clientHistoryData.lifetime_received)}
+                    </div>
+                    <span className="text-[10px] text-emerald-200/80 font-medium">Cash Inflow</span>
+                  </div>
+
+                  <div className="bg-white/10 rounded-xl p-2.5 backdrop-blur-2xs">
+                    <span className="text-amber-200 font-semibold block text-[11px]">Pending Balance</span>
+                    <div className={`text-lg font-black mt-0.5 ${clientHistoryData.lifetime_pending > 0 ? 'text-amber-300' : 'text-slate-300'}`}>
+                      {formatCurrency(clientHistoryData.lifetime_pending)}
+                    </div>
+                    <span className="text-[10px] text-amber-200/80 font-medium">
+                      {clientHistoryData.lifetime_pending > 0 ? 'Active Collectible' : 'All Settled'}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Timeline Section */}
+            {loadingHistory ? (
+              <div className="py-16 text-center text-slate-400 font-medium">
+                Loading complete client lifecycle and renewal records...
+              </div>
+            ) : clientHistoryData && clientHistoryData.timeline?.length > 0 ? (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2">
+                    <History className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                    Renewal & Deliverables Timeline ({clientHistoryData.timeline.length} Cycles)
+                  </h4>
+                  <span className="text-xs text-slate-500 dark:text-slate-400">
+                    Chronological order (Earliest on top ➔ Latest active)
+                  </span>
+                </div>
+
+                <div className="relative pl-6 space-y-6 before:content-[''] before:absolute before:left-2.5 before:top-3 before:bottom-3 before:w-0.5 before:bg-indigo-200 dark:before:bg-indigo-900">
+                  {clientHistoryData.timeline.map((term, idx) => {
+                    const isLatest = idx === clientHistoryData.timeline.length - 1;
+                    const isPaidFull = term.pending_amount <= 0;
+
+                    return (
+                      <div key={term.deal_id} className="relative group">
+                        {/* Dot indicator on timeline */}
+                        <div className={`absolute -left-6 top-4 w-5 h-5 rounded-full border-2 flex items-center justify-center text-[10px] font-black transition-all ${
+                          isLatest
+                            ? 'bg-indigo-600 border-white dark:border-slate-900 text-white shadow-md scale-110 ring-4 ring-indigo-100 dark:ring-indigo-950'
+                            : 'bg-white dark:bg-slate-900 border-indigo-400 dark:border-indigo-600 text-indigo-600 dark:text-indigo-400'
+                        }`}>
+                          {term.cycle_number}
+                        </div>
+
+                        {/* Cycle Box */}
+                        <div className={`rounded-2xl p-4 border transition-all ${
+                          term.is_target
+                            ? 'bg-indigo-50/40 dark:bg-indigo-950/20 border-indigo-300 dark:border-indigo-700 shadow-sm'
+                            : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800'
+                        }`}>
+                          {/* Cycle Header */}
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b border-slate-100 dark:border-slate-800">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className={`px-2.5 py-0.5 rounded-full text-xs font-black flex items-center gap-1 ${
+                                term.is_initial 
+                                  ? 'bg-purple-100 dark:bg-purple-950 text-purple-800 dark:text-purple-300 border border-purple-200 dark:border-purple-800'
+                                  : 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                              }`}>
+                                {term.is_initial ? (
+                                  <>🌱 Cycle 1: Initial Deal</>
+                                ) : (
+                                  <>🔁 Cycle {term.cycle_number}: Renewal #{term.renewal_number}</>
+                                )}
+                              </span>
+
+                              {isLatest && (
+                                <span className="px-2 py-0.5 rounded-full bg-indigo-600 text-white text-[10px] font-extrabold uppercase tracking-wider">
+                                  Current Term
+                                </span>
+                              )}
+
+                              <span className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1 font-medium">
+                                <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                                {formatDate(term.deal_date)} ({term.duration_months} Mo)
+                              </span>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              <span className={`px-2 py-0.5 rounded text-[11px] font-bold ${
+                                term.status === 'lost'
+                                  ? 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
+                                  : isPaidFull
+                                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                                  : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                              }`}>
+                                {term.status === 'lost' ? 'Lost Deal' : isPaidFull ? 'Paid in Full' : `Pending ₹${term.pending_amount.toLocaleString('en-IN')}`}
+                              </span>
+                              
+                              {term.renewal_status === 'renewed' && (
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                                  Renewed ➔
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Upgrades & Scope Adjustments Diff Pill Banner */}
+                          {term.diffs && term.diffs.length > 0 && (
+                            <div className="mt-3 p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/60 space-y-1">
+                              <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1">
+                                <TrendingUp className="w-3 h-3 text-emerald-500" />
+                                Upgrades & Scope Adjustments Compared to Cycle {term.cycle_number - 1}:
+                              </span>
+                              <div className="flex flex-wrap gap-1.5 pt-0.5">
+                                {term.diffs.map((d, diffIdx) => (
+                                  <span
+                                    key={diffIdx}
+                                    className={`px-2 py-0.5 rounded text-[11px] font-bold flex items-center gap-1 ${
+                                      d.type === 'upgrade'
+                                        ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-700'
+                                        : d.type === 'added'
+                                        ? 'bg-teal-100 dark:bg-teal-950 text-teal-800 dark:text-teal-200 border border-teal-300 dark:border-teal-700'
+                                        : d.type === 'downgrade'
+                                        ? 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-200 border border-amber-300 dark:border-amber-700'
+                                        : d.type === 'price_increase'
+                                        ? 'bg-indigo-100 dark:bg-indigo-950 text-indigo-800 dark:text-indigo-200 border border-indigo-300 dark:border-indigo-700'
+                                        : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+                                    }`}
+                                  >
+                                    {d.message}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Services in this cycle */}
+                          <div className="mt-3">
+                            <span className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                              Ordered Package & Deliverables:
+                            </span>
+                            <div className="flex flex-wrap gap-1.5">
+                              {term.services && term.services.length > 0 ? (
+                                term.services.map((s, sIdx) => (
+                                  <span
+                                    key={sIdx}
+                                    className="px-2.5 py-1 rounded-lg bg-indigo-50/70 dark:bg-indigo-950/70 text-indigo-800 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-800/80 text-xs font-semibold flex items-center gap-1.5"
+                                  >
+                                    <Sparkles className="w-3 h-3 text-indigo-500" />
+                                    <span>{s.service_name}</span>
+                                    {s.quantity > 1 && (
+                                      <span className="px-1.5 py-0.2 rounded bg-indigo-200/80 dark:bg-indigo-800/80 text-indigo-950 dark:text-indigo-100 font-black text-[10px]">
+                                        x{s.quantity}
+                                      </span>
+                                    )}
+                                    <span className="text-[10px] text-slate-400 font-mono">
+                                      (₹{Number(s.agreed_price || 0).toLocaleString('en-IN')})
+                                    </span>
+                                  </span>
+                                ))
+                              ) : (
+                                <span className="text-xs text-slate-400 italic">No specific service items recorded</span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Financials & Payments Strip */}
+                          <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 grid grid-cols-3 gap-2 text-xs">
+                            <div>
+                              <span className="text-slate-400">Cycle Value:</span>
+                              <div className="font-black text-slate-900 dark:text-white text-sm">
+                                {formatCurrency(term.total_deal_amount)}
+                              </div>
+                            </div>
+                            <div>
+                              <span className="text-slate-400">Received:</span>
+                              <div className="font-black text-emerald-600 dark:text-emerald-400 text-sm">
+                                {formatCurrency(term.received_amount)}
+                              </div>
+                            </div>
+                            <div>
+                              <span className="text-slate-400">Pending:</span>
+                              <div className={`font-black text-sm ${term.pending_amount > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-400'}`}>
+                                {formatCurrency(term.pending_amount)}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Payments breakdown in this cycle */}
+                          {term.payments && term.payments.length > 0 && (
+                            <div className="mt-2.5 pt-2 border-t border-slate-100 dark:border-slate-800 text-[11px] text-slate-500 dark:text-slate-400 space-y-1">
+                              <span className="font-bold block text-slate-600 dark:text-slate-300">
+                                💳 Payments Logged ({term.payments.length}):
+                              </span>
+                              <div className="flex flex-wrap gap-2">
+                                {term.payments.map((p, pIdx) => (
+                                  <span key={pIdx} className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 font-mono">
+                                    {formatDate(p.payment_date)}: <strong className="text-emerald-600">{formatCurrency(p.amount)}</strong> ({p.payment_mode})
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Cycle Notes */}
+                          {term.notes && (
+                            <p className="mt-2.5 text-xs text-slate-600 dark:text-slate-400 italic bg-slate-50 dark:bg-slate-800/40 p-2 rounded-lg border border-slate-200/50 dark:border-slate-800/50">
+                              {term.notes}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              <div className="py-12 text-center text-slate-400 font-medium">
+                No past cycles found for this client.
+              </div>
+            )}
+
+            {/* Modal Footer */}
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => {
+                  setHistoryModalDeal(null);
+                  setClientHistoryData(null);
+                }}
+                className="px-5 py-2 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                Close History
+              </button>
             </div>
 
           </div>

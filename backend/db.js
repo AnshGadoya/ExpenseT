@@ -30,7 +30,8 @@ export async function connectDB() {
 
 export async function initDB() {
   try {
-    // Seed default Services if missing
+    // Static Services Seeding (Commented out: Services are fully managed via Database / Service Master UI)
+    /*
     const officialServices = [
       { name: 'Professional Logo Design', category: 'Specialized Creative Solutions', base_price: 799, pricing_type: 'qty_wise', description: 'Custom vector logo design & high-res branding assets' },
       { name: 'Visiting Card Design', category: 'Specialized Creative Solutions', base_price: 399, pricing_type: 'qty_wise', description: 'Print-ready double-sided business card layout' },
@@ -45,13 +46,11 @@ export async function initDB() {
     for (const s of officialServices) {
       await Service.updateOne(
         { name: s.name },
-        { 
-          $setOnInsert: s,
-          $set: { pricing_type: s.pricing_type }
-        },
+        { $setOnInsert: s },
         { upsert: true }
       );
     }
+    */
     const defaultCategories = [
       { name: 'Food & Refreshments', icon: 'utensils', color: '#f97316', description: 'Team snacks, client dinners, shoot day lunches & coffee' },
       { name: 'Travel & Commute', icon: 'navigation', color: '#06b6d4', description: 'Auto, cab, metro, and local commute for shoots' },

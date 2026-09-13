@@ -53,12 +53,12 @@ export const api = {
   updateExpense: (id, data) => fetchAPI(`/expenses/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteExpense: (id) => fetchAPI(`/expenses/${id}`, { method: 'DELETE' }),
 
-  // Deals & Receivables
   getDeals: (params = {}) => {
     const query = new URLSearchParams(params).toString();
     return fetchAPI(`/deals${query ? `?${query}` : ''}`);
   },
   getDeal: (id) => fetchAPI(`/deals/${id}`),
+  getDealHistory: (id) => fetchAPI(`/deals/${id}/history`),
   createDeal: (data) => fetchAPI('/deals', { method: 'POST', body: JSON.stringify(data) }),
   updateDeal: (id, data) => fetchAPI(`/deals/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteDeal: (id) => fetchAPI(`/deals/${id}`, { method: 'DELETE' }),

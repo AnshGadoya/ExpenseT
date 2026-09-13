@@ -516,11 +516,14 @@ app.delete('/api/expenses/:id', async (req, res) => {
 // ==========================================
 app.get('/api/deals', async (req, res) => {
   try {
-    const { search, status, start_date, end_date } = req.query;
+    const { status, search, start_date, end_date, current_only } = req.query;
     const query = {};
 
     if (status && status !== 'all') {
       query.status = status;
+    }
+    if (current_only === 'true') {
+      query.is_current = { $ne: false };
     }
     if (start_date || end_date) {
       query.deal_date = {};
@@ -542,8 +545,19 @@ app.get('/api/deals', async (req, res) => {
 
     const fullDeals = await Promise.all(deals.map(async (deal) => {
       const payments = await ClientPayment.find({ deal_id: deal._id }).sort({ payment_date: -1, _id: -1 });
+      
+      // Count total cycles for this client to display renewal count badge on card
+      const rootId = deal.root_deal_id || deal._id;
+      const historyConditions = [{ _id: rootId }, { root_deal_id: rootId }];
+      if (deal.client_phone?.trim()) {
+        historyConditions.push({ client_phone: deal.client_phone.trim() });
+      }
+      const clientDealsCount = await ClientDeal.countDocuments({ $or: historyConditions });
+
       return {
         ...deal.toJSON(),
+        client_total_cycles: clientDealsCount,
+        client_renewals_count: Math.max(0, clientDealsCount - 1),
         payments: payments.map(p => p.toJSON())
       };
     }));
@@ -572,6 +586,179 @@ app.get('/api/deals/:id', async (req, res) => {
   }
 });
 
+// Full Client Lifecycle & Renewal Timeline History
+app.get('/api/deals/:id/history', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const targetDeal = await ClientDeal.findById(id);
+    if (!targetDeal) {
+      return res.status(404).json({ error: 'Deal not found' });
+    }
+
+    // Match all deals belonging to this client chain
+    const rootId = targetDeal.root_deal_id || targetDeal._id;
+    const queryConditions = [
+      { _id: rootId },
+      { root_deal_id: rootId },
+      { previous_deal_id: targetDeal._id },
+      { _id: targetDeal._id }
+    ];
+
+    if (targetDeal.client_phone && targetDeal.client_phone.trim()) {
+      queryConditions.push({ client_phone: targetDeal.client_phone.trim() });
+    }
+    if (targetDeal.client_name) {
+      queryConditions.push({
+        client_name: { $regex: new RegExp(`^${targetDeal.client_name.trim()}$`, 'i') },
+        company_name: targetDeal.company_name ? { $regex: new RegExp(`^${targetDeal.company_name.trim()}$`, 'i') } : { $in: [null, ''] }
+      });
+    }
+
+    const allDeals = await ClientDeal.find({ $or: queryConditions });
+
+    // Deduplicate
+    const dealsMap = new Map();
+    allDeals.forEach(d => dealsMap.set(d._id.toString(), d));
+    const uniqueDeals = Array.from(dealsMap.values());
+
+    // Sort chronologically ascending (earliest deal first)
+    uniqueDeals.sort((a, b) => {
+      const dateA = new Date(a.deal_date || a.created_at || 0).getTime();
+      const dateB = new Date(b.deal_date || b.created_at || 0).getTime();
+      if (dateA !== dateB) return dateA - dateB;
+      return (a.created_at || 0) - (b.created_at || 0);
+    });
+
+    let runningTotalAmount = 0;
+    let runningTotalReceived = 0;
+    let runningTotalPending = 0;
+
+    const timeline = [];
+
+    for (let i = 0; i < uniqueDeals.length; i++) {
+      const d = uniqueDeals[i];
+      const payments = await ClientPayment.find({ deal_id: d._id }).sort({ payment_date: -1, _id: -1 });
+
+      runningTotalAmount += Number(d.total_deal_amount || 0);
+      runningTotalReceived += Number(d.received_amount || 0);
+      runningTotalPending += Number(d.pending_amount || 0);
+
+      const prevCycle = i > 0 ? uniqueDeals[i - 1] : null;
+      const diffs = [];
+
+      if (prevCycle) {
+        const prevServicesMap = new Map();
+        (prevCycle.services || []).forEach(s => {
+          const key = (s.service_name || '').toLowerCase().trim();
+          prevServicesMap.set(key, s);
+        });
+
+        const currentServicesMap = new Map();
+        (d.services || []).forEach(s => {
+          const key = (s.service_name || '').toLowerCase().trim();
+          currentServicesMap.set(key, s);
+        });
+
+        // Quantity changes & upgrades
+        (d.services || []).forEach(currS => {
+          const key = (currS.service_name || '').toLowerCase().trim();
+          const prevS = prevServicesMap.get(key);
+          if (prevS) {
+            const qtyDiff = (currS.quantity || 1) - (prevS.quantity || 1);
+            if (qtyDiff > 0) {
+              diffs.push({
+                type: 'upgrade',
+                service_name: currS.service_name,
+                message: `Upgraded ${currS.service_name}: ${prevS.quantity || 1} ➔ ${currS.quantity || 1} (+${qtyDiff})`,
+                old_qty: prevS.quantity || 1,
+                new_qty: currS.quantity || 1,
+                diff_qty: qtyDiff
+              });
+            } else if (qtyDiff < 0) {
+              diffs.push({
+                type: 'downgrade',
+                service_name: currS.service_name,
+                message: `Reduced ${currS.service_name}: ${prevS.quantity || 1} ➔ ${currS.quantity || 1} (${qtyDiff})`,
+                old_qty: prevS.quantity || 1,
+                new_qty: currS.quantity || 1,
+                diff_qty: qtyDiff
+              });
+            }
+          } else {
+            diffs.push({
+              type: 'added',
+              service_name: currS.service_name,
+              message: `Added: ${currS.service_name} (x${currS.quantity || 1})`,
+              new_qty: currS.quantity || 1
+            });
+          }
+        });
+
+        (prevCycle.services || []).forEach(prevS => {
+          const key = (prevS.service_name || '').toLowerCase().trim();
+          if (!currentServicesMap.has(key)) {
+            diffs.push({
+              type: 'removed',
+              service_name: prevS.service_name,
+              message: `Discontinued: ${prevS.service_name}`,
+              old_qty: prevS.quantity || 1
+            });
+          }
+        });
+
+        const priceDiff = Number(d.total_deal_amount || 0) - Number(prevCycle.total_deal_amount || 0);
+        if (priceDiff !== 0) {
+          diffs.push({
+            type: priceDiff > 0 ? 'price_increase' : 'price_decrease',
+            message: priceDiff > 0
+              ? `Package value increased by ₹${priceDiff.toLocaleString('en-IN')}`
+              : `Package value decreased by ₹${Math.abs(priceDiff).toLocaleString('en-IN')}`,
+            diff_amount: priceDiff
+          });
+        }
+      }
+
+      timeline.push({
+        deal_id: d._id.toString(),
+        cycle_number: i + 1,
+        renewal_number: i,
+        is_initial: i === 0,
+        is_current: Boolean(d.is_current !== false),
+        is_target: d._id.toString() === targetDeal._id.toString(),
+        deal_date: d.deal_date,
+        duration_months: d.duration_months || 1,
+        expiry_date: d.expiry_date,
+        total_deal_amount: d.total_deal_amount,
+        received_amount: d.received_amount,
+        pending_amount: d.pending_amount,
+        status: d.status,
+        renewal_status: d.renewal_status || (i < uniqueDeals.length - 1 ? 'renewed' : 'none'),
+        notes: d.notes,
+        services: (d.services || []).map(s => s.toJSON ? s.toJSON() : s),
+        diffs,
+        payments: payments.map(p => p.toJSON())
+      });
+    }
+
+    res.json({
+      client_name: targetDeal.client_name,
+      company_name: targetDeal.company_name,
+      client_phone: targetDeal.client_phone,
+      client_email: targetDeal.client_email,
+      insta_id: targetDeal.insta_id,
+      total_cycles: uniqueDeals.length,
+      renewals_count: Math.max(0, uniqueDeals.length - 1),
+      lifetime_deal_value: runningTotalAmount,
+      lifetime_received: runningTotalReceived,
+      lifetime_pending: runningTotalPending,
+      current_deal_id: uniqueDeals[uniqueDeals.length - 1]._id.toString(),
+      timeline
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.post('/api/deals', async (req, res) => {
   try {
     const {
@@ -588,7 +775,8 @@ app.post('/api/deals', async (req, res) => {
       payment_mode,
       payment_reference,
       services,
-      notes
+      notes,
+      previous_deal_id
     } = req.body;
 
     if (!client_name?.trim() || !company_name?.trim() || !client_phone?.trim() || !deal_date || !total_deal_amount) {
@@ -624,6 +812,23 @@ app.post('/api/deals', async (req, res) => {
       }
     }
 
+    let rootDealId = null;
+    let renewalNumber = 0;
+    let previousDeal = null;
+
+    if (previous_deal_id) {
+      previousDeal = await ClientDeal.findById(previous_deal_id);
+      if (previousDeal) {
+        rootDealId = previousDeal.root_deal_id || previousDeal._id;
+        renewalNumber = (previousDeal.renewal_number || 0) + 1;
+
+        if (!previousDeal.root_deal_id) {
+          previousDeal.root_deal_id = previousDeal._id;
+          previousDeal.renewal_number = 0;
+        }
+      }
+    }
+
     const newDeal = new ClientDeal({
       client_name: client_name.trim(),
       client_phone: client_phone ? client_phone.trim() : null,
@@ -638,9 +843,25 @@ app.post('/api/deals', async (req, res) => {
       pending_amount: pendingAmount,
       status,
       notes: notes ? notes.trim() : null,
-      services: formattedServices
+      services: formattedServices,
+      root_deal_id: rootDealId,
+      previous_deal_id: previousDeal ? previousDeal._id : null,
+      renewal_number: renewalNumber,
+      is_current: true,
+      renewal_status: 'none'
     });
     await newDeal.save();
+
+    // Mark previous deal as renewed and archive from current active view
+    if (previousDeal) {
+      previousDeal.is_current = false;
+      previousDeal.renewal_status = 'renewed';
+      previousDeal.next_deal_id = newDeal._id;
+      if (previousDeal.status === 'active' && previousDeal.pending_amount <= 0) {
+        previousDeal.status = 'completed';
+      }
+      await previousDeal.save();
+    }
 
     if (initialPaid > 0) {
       const payRecord = new ClientPayment({
