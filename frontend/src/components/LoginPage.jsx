@@ -6,7 +6,7 @@ export default function LoginPage() {
   const { login, verify2FA, register } = useAuth();
   const [isRegisterMode, setIsRegisterMode] = useState(false);
   const [stage, setStage] = useState('credentials'); // 'credentials' | '2fa'
-  
+
   // Credentials State
   const [formData, setFormData] = useState({
     username: '',
@@ -115,15 +115,7 @@ export default function LoginPage() {
     }
   };
 
-  const fillQuickAdmin = () => {
-    setFormData({
-      username: 'admin',
-      password: 'admin123',
-      name: 'Gandhi Infosol Admin',
-    });
-    setIsRegisterMode(false);
-    setError('');
-  };
+
 
   return (
     <div className="min-h-screen w-full flex items-center justify-center bg-slate-900 text-slate-100 relative overflow-hidden p-4 font-sans">
@@ -133,7 +125,7 @@ export default function LoginPage() {
 
       {/* Main Glass Card */}
       <div className="w-full max-w-md bg-slate-800/80 backdrop-blur-xl border border-slate-700/60 rounded-3xl p-8 shadow-2xl relative z-10">
-        
+
         {/* Brand Header */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-tr from-indigo-500 via-indigo-600 to-emerald-400 p-0.5 shadow-lg shadow-indigo-500/30 mb-4">
@@ -152,8 +144,8 @@ export default function LoginPage() {
             {stage === '2fa'
               ? '2-Factor Authentication Required'
               : isRegisterMode
-              ? 'Create a new account to get started'
-              : 'Sign in to access your business tracker'}
+                ? 'Create a new account to get started'
+                : 'Sign in to access your business tracker'}
           </p>
         </div>
 
@@ -176,7 +168,7 @@ export default function LoginPage() {
                   <input
                     type="text"
                     required
-                    placeholder="e.g. Ansh Gadoya"
+                    placeholder="e.g. Ansh Dev"
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                     className="w-full pl-10 pr-4 py-2.5 bg-slate-900/80 border border-slate-700 rounded-xl text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
@@ -230,19 +222,7 @@ export default function LoginPage() {
               )}
             </button>
 
-            {/* Quick Admin fill button */}
-            {!isRegisterMode && (
-              <div className="mt-6 pt-5 border-t border-slate-700/60 flex flex-col items-center gap-2">
-                <button
-                  type="button"
-                  onClick={fillQuickAdmin}
-                  className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-400 hover:text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-lg transition-colors"
-                >
-                  <Key className="w-3.5 h-3.5" />
-                  Quick fill default admin (`admin` / `admin123`)
-                </button>
-              </div>
-            )}
+
 
             {/* Mode Toggle Footer */}
             <div className="mt-6 text-center">
@@ -267,7 +247,7 @@ export default function LoginPage() {
         {/* STAGE 2: 2-Factor Authentication (TOTP Google Authenticator) */}
         {stage === '2fa' && (
           <form onSubmit={handleOtpSubmit} className="space-y-6">
-            
+
             {/* Initial QR Code Setup Guide (If 2FA is not yet configured) */}
             {twoFactorData.isSetupNeeded && (
               <div className="p-4 bg-slate-900/90 border border-indigo-500/30 rounded-2xl text-center space-y-3">
