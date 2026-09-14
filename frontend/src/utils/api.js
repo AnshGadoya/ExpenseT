@@ -85,7 +85,10 @@ export const api = {
   },
   recordSalaryPayment: (data) => fetchAPI('/salaries', { method: 'POST', body: JSON.stringify(data) }),
   deleteSalaryPayment: (id) => fetchAPI(`/salaries/${id}`, { method: 'DELETE' }),
-  getSalaryMatrix: () => fetchAPI('/salaries/matrix'),
+  getSalaryMatrix: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return fetchAPI(`/salaries/matrix${query ? `?${query}` : ''}`);
+  },
 
   // Analytics
   getAnalyticsSummary: (params = {}) => {

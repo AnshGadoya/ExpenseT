@@ -1601,11 +1601,64 @@ app.get('/api/salaries/matrix', async (req, res) => {
     const employees = await Employee.find().sort({ _id: 1 });
     const payments = await SalaryPayment.find().populate('employee_id');
 
-    const months = [
-      'March 2026', 'April 2026', 'May 2026', 'June 2026',
-      'July 2026', 'August 2026', 'September 2026', 'October 2026',
-      'November 2026', 'December 2026', 'January 2027', 'February 2027'
+    // Standard Indian Financial Year (April - March)
+    const cycle = req.query.cycle || 'april';
+    let startYear = parseInt(req.query.year);
+    if (!startYear || isNaN(startYear)) {
+      if (req.query.fy) {
+        startYear = parseInt(req.query.fy.split('-')[0]);
+      }
+    }
+    if (!startYear || isNaN(startYear)) {
+      const now = new Date();
+      startYear = now.getFullYear();
+      // In Indian Financial Year, Jan/Feb/Mar belongs to previous calendar year's FY
+      if (now.getMonth() < 3) {
+        startYear -= 1;
+      }
+    }
+
+    const monthNames = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
     ];
+
+    let months = [];
+    if (cycle === 'calendar') {
+      months = monthNames.map(m => `${m} ${startYear}`);
+    } else if (cycle === 'march') {
+      // March YYYY to February YYYY+1
+      for (let i = 2; i < 14; i++) {
+        const mIdx = i % 12;
+        const y = i >= 12 ? startYear + 1 : startYear;
+        months.push(`${monthNames[mIdx]} ${y}`);
+      }
+    } else {
+      // April YYYY to March YYYY+1 (Standard Indian FY)
+      for (let i = 3; i < 15; i++) {
+        const mIdx = i % 12;
+        const y = i >= 12 ? startYear + 1 : startYear;
+        months.push(`${monthNames[mIdx]} ${y}`);
+      }
+    }
+
+    // Discover any years that have recorded payments or employee join dates
+    const distinctPaymentMonths = await SalaryPayment.distinct('month_year');
+    const recordedYears = distinctPaymentMonths.map(m => {
+      const parts = String(m).trim().split(' ');
+      return parseInt(parts[1]);
+    }).filter(y => !isNaN(y));
+
+    const minYear = Math.min(2023, ...recordedYears);
+    const maxYear = Math.max(startYear + 2, 2028, ...recordedYears);
+    const availableYears = [];
+    for (let y = minYear; y <= maxYear; y++) {
+      availableYears.push({
+        year: y,
+        label: `FY ${y}-${String(y + 1).slice(-2)}`,
+        fy: `${y}-${String(y + 1).slice(-2)}`
+      });
+    }
 
     const matrix = employees.map(emp => {
       const empIdStr = emp._id.toString();
@@ -1631,7 +1684,14 @@ app.get('/api/salaries/matrix', async (req, res) => {
       return row;
     });
 
-    res.json({ months, matrix });
+    res.json({
+      months,
+      matrix,
+      cycle,
+      selectedYear: startYear,
+      selectedFy: `${startYear}-${String(startYear + 1).slice(-2)}`,
+      availableYears
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

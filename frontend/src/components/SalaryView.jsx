@@ -1,35 +1,27 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   Users,
-  Plus,
-  Search,
-  Download,
-  Trash2,
-  Edit3,
-  CheckCircle2,
-  Calendar,
-  CreditCard,
-  Building2,
   IndianRupee,
-  Briefcase,
-  UserCheck,
-  UserX,
-  FileSpreadsheet,
-  Grid,
-  List,
-  Filter,
+  Plus,
+  Edit3,
+  Trash2,
+  Calendar,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Search,
+  X,
   Check,
   AlertCircle,
   Clock,
-  Sparkles,
-  Phone,
-  Mail,
-  ChevronRight,
-  ChevronDown,
-  X,
+  CreditCard,
+  Grid,
+  List,
   Layers,
   ArrowRight,
-  SlidersHorizontal,
+  RotateCcw,
+  Sparkles,
+  Filter
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { api } from '../utils/api';
@@ -49,16 +41,41 @@ const JOB_ROLES = [
   'Other'
 ];
 
-const DEFAULT_MONTHS = [
-  'March 2026', 'April 2026', 'May 2026', 'June 2026',
-  'July 2026', 'August 2026', 'September 2026', 'October 2026',
-  'November 2026', 'December 2026', 'January 2027', 'February 2027'
+const ALL_MONTHS = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'
 ];
+
+// Generate years list: past years (2023+) up to future (2032+)
+const generateYearList = () => {
+  const currentYear = new Date().getFullYear();
+  const start = Math.min(2023, currentYear - 3);
+  const end = Math.max(2030, currentYear + 4);
+  const years = [];
+  for (let y = start; y <= end; y++) {
+    years.push(y);
+  }
+  return years;
+};
 
 export default function SalaryView({ darkMode }) {
   const [viewMode, setViewMode] = useState('matrix'); // 'matrix' or 'list'
   const [mobileMatrixView, setMobileMatrixView] = useState('cards'); // 'cards' or 'table' on mobile
-  const [matrixData, setMatrixData] = useState({ months: DEFAULT_MONTHS, matrix: [] });
+
+  // Standard Financial Year (April - March) State
+  const currentFiscalYear = useMemo(() => {
+    const now = new Date();
+    return now.getMonth() < 3 ? now.getFullYear() - 1 : now.getFullYear();
+  }, []);
+
+  const [selectedYear, setSelectedYear] = useState(currentFiscalYear);
+  const selectedCycle = 'april'; // Standard Indian Financial Year (Apr - Mar)
+
+  const [matrixData, setMatrixData] = useState({
+    months: [],
+    matrix: [],
+    availableYears: []
+  });
   const [employees, setEmployees] = useState([]);
   const [salaries, setSalaries] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -67,6 +84,7 @@ export default function SalaryView({ darkMode }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState(''); // 'Active' or 'Leave'
+  const [historyYearFilter, setHistoryYearFilter] = useState('all');
 
   // Modals state
   const [isAddEmpOpen, setIsAddEmpOpen] = useState(false);
@@ -81,10 +99,18 @@ export default function SalaryView({ darkMode }) {
     notes: ''
   });
 
+  // Active current month string (e.g. "September 2026")
+  const currentActiveMonthYear = useMemo(() => {
+    const now = new Date();
+    return `${ALL_MONTHS[now.getMonth()]} ${now.getFullYear()}`;
+  }, []);
+
   const [isPayModalOpen, setIsPayModalOpen] = useState(false);
   const [payForm, setPayForm] = useState({
     employee_id: '',
-    month_year: 'August 2026',
+    month_name: ALL_MONTHS[new Date().getMonth()],
+    year_num: new Date().getFullYear(),
+    month_year: currentActiveMonthYear,
     amount: '',
     leave_days: '',
     working_days: 30,
@@ -110,6 +136,7 @@ export default function SalaryView({ darkMode }) {
     return employees.find(e => String(e.id) === String(payForm.employee_id)) || null;
   }, [employees, payForm.employee_id]);
 
+  // Handle leave deduction auto calculation
   const handleLeaveDaysChange = (days, empId, currentWorkingDays = payForm.working_days) => {
     const leaveDaysNum = Math.max(0, Number(days) || 0);
     const targetEmpId = empId !== undefined ? empId : payForm.employee_id;
@@ -141,16 +168,17 @@ export default function SalaryView({ darkMode }) {
     }
   };
 
-  // Load all data
-  const loadData = async () => {
+  // Load all data for selected Year and Cycle
+  const loadData = async (year = selectedYear, cycle = selectedCycle) => {
     setLoading(true);
     try {
       const [matrixRes, empRes, salRes] = await Promise.all([
-        api.getSalaryMatrix().catch(() => ({ months: DEFAULT_MONTHS, matrix: [] })),
+        api.getSalaryMatrix({ year, cycle }).catch(() => ({ months: [], matrix: [], availableYears: [] })),
         api.getEmployees().catch(() => []),
         api.getSalaries().catch(() => [])
       ]);
-      setMatrixData(matrixRes && Array.isArray(matrixRes.matrix) ? matrixRes : { months: DEFAULT_MONTHS, matrix: [] });
+
+      setMatrixData(matrixRes && Array.isArray(matrixRes.matrix) ? matrixRes : { months: [], matrix: [], availableYears: [] });
       setEmployees(Array.isArray(empRes) ? empRes : []);
       setSalaries(Array.isArray(salRes) ? salRes : []);
     } catch (err) {
@@ -164,8 +192,22 @@ export default function SalaryView({ darkMode }) {
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'instant' });
-    loadData();
-  }, []);
+    loadData(selectedYear, selectedCycle);
+  }, [selectedYear, selectedCycle]);
+
+  // Year switcher handlers
+  const handlePrevYear = () => {
+    setSelectedYear(prev => prev - 1);
+  };
+
+  const handleNextYear = () => {
+    setSelectedYear(prev => prev + 1);
+  };
+
+  const handleResetToCurrentYear = () => {
+    const currentY = new Date().getFullYear();
+    setSelectedYear(currentY);
+  };
 
   // Quick toggle status between Active and Leave directly
   const handleToggleStatus = async (emp, newStatus) => {
@@ -241,6 +283,45 @@ export default function SalaryView({ darkMode }) {
     );
   }, [payForm.employee_id, payForm.month_year, salaries]);
 
+  // Update Pay Modal Month or Year
+  const updatePayModalMonthYear = (newMonth, newYear) => {
+    const updatedMonth = newMonth !== undefined ? newMonth : payForm.month_name;
+    const updatedYear = newYear !== undefined ? Number(newYear) : payForm.year_num;
+    const combinedMonthYear = `${updatedMonth} ${updatedYear}`;
+
+    setPayForm(prev => {
+      const emp = employees.find(e => String(e.id) === String(prev.employee_id));
+      const leaveDays = Math.max(0, Number(prev.leave_days || 0));
+      const baseSalary = Number(emp?.monthly_salary || 0);
+      const totalDays = Math.max(1, Number(prev.working_days || 30));
+      const deduction = Math.round((baseSalary / totalDays) * leaveDays);
+
+      return {
+        ...prev,
+        month_name: updatedMonth,
+        year_num: updatedYear,
+        month_year: combinedMonthYear,
+        notes: leaveDays > 0
+          ? `Salary payout for ${emp?.name || ''} (${combinedMonthYear}) (${leaveDays} days unpaid leave: -₹${deduction.toLocaleString('en-IN')})`
+          : `Salary payout for ${emp?.name || ''} (${combinedMonthYear})`
+      };
+    });
+  };
+
+  // Set Pay Modal to quick preset (Previous Month, Current Month, Next Month)
+  const setQuickPresetMonth = (preset) => {
+    const now = new Date();
+    let targetDate = new Date(now.getFullYear(), now.getMonth(), 1);
+    if (preset === 'prev') {
+      targetDate.setMonth(targetDate.getMonth() - 1);
+    } else if (preset === 'next') {
+      targetDate.setMonth(targetDate.getMonth() + 1);
+    }
+    const m = ALL_MONTHS[targetDate.getMonth()];
+    const y = targetDate.getFullYear();
+    updatePayModalMonthYear(m, y);
+  };
+
   // Pay Salary Submit
   const handlePaySubmit = async (e) => {
     e.preventDefault();
@@ -257,7 +338,9 @@ export default function SalaryView({ darkMode }) {
       setIsPayModalOpen(false);
       setPayForm({
         employee_id: '',
-        month_year: 'August 2026',
+        month_name: ALL_MONTHS[new Date().getMonth()],
+        year_num: new Date().getFullYear(),
+        month_year: currentActiveMonthYear,
         amount: '',
         leave_days: '',
         working_days: 30,
@@ -273,24 +356,41 @@ export default function SalaryView({ darkMode }) {
     }
   };
 
-  const handleOpenQuickPay = (empId, monthName, defaultAmount) => {
+  // Open Quick Pay Modal prefilled with employee and specific month
+  const handleOpenQuickPay = (empId, targetMonthYear, defaultAmount) => {
     const selectedEmp = employees.find(e => String(e.id) === String(empId));
+    
+    // Parse target month & year
+    let mName = ALL_MONTHS[new Date().getMonth()];
+    let yNum = new Date().getFullYear();
+    if (targetMonthYear) {
+      const parts = targetMonthYear.trim().split(' ');
+      if (parts.length >= 2) {
+        mName = parts[0];
+        yNum = Number(parts[1]) || yNum;
+      }
+    }
+
+    const combined = `${mName} ${yNum}`;
+
     setPayForm({
       employee_id: String(empId),
-      month_year: monthName,
-      amount: defaultAmount || selectedEmp?.monthly_salary || '',
+      month_name: mName,
+      year_num: yNum,
+      month_year: combined,
+      amount: defaultAmount !== undefined ? defaultAmount : (selectedEmp?.monthly_salary || ''),
       leave_days: '',
       working_days: 30,
       payment_date: getTodayDateString(),
       payment_mode: 'GPay',
       reference_no: '',
-      notes: `Salary payout for ${selectedEmp?.name || ''} (${monthName})`
+      notes: `Salary payout for ${selectedEmp?.name || ''} (${combined})`
     });
     setIsPayModalOpen(true);
   };
 
   const handleDeleteSalary = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this salary payment log?')) return;
+    if (!window.confirm('Are you sure you want to delete this salary payment record?')) return;
     try {
       await api.deleteSalaryPayment(id);
       loadData();
@@ -311,30 +411,51 @@ export default function SalaryView({ darkMode }) {
     });
   }, [matrixData.matrix, searchTerm, roleFilter, statusFilter]);
 
+  // Filter salary payment history
+  const filteredHistory = useMemo(() => {
+    return (salaries || []).filter((sal) => {
+      if (historyYearFilter !== 'all') {
+        if (!sal.month_year.includes(String(historyYearFilter))) return false;
+      }
+      if (searchTerm) {
+        const term = searchTerm.toLowerCase();
+        const empName = (sal.employee_name || '').toLowerCase();
+        const role = (sal.job_role || '').toLowerCase();
+        const ref = (sal.reference_no || '').toLowerCase();
+        return empName.includes(term) || role.includes(term) || ref.includes(term);
+      }
+      return true;
+    });
+  }, [salaries, historyYearFilter, searchTerm]);
+
   // Calculate totals
   const totalMembers = employees.length;
   const activeMembers = employees.filter(e => e.status === 'Active').length;
   const leaveMembers = employees.filter(e => e.status === 'Leave').length;
 
+  // Monthly active commitment
   const totalMonthlyBudget = useMemo(() => {
     return employees
       .filter(e => e.status === 'Active')
       .reduce((sum, e) => sum + (Number(e.monthly_salary) || 0), 0);
   }, [employees]);
 
-  const currentMonthPaid = useMemo(() => {
-    return salaries
-      .filter(s => s.month_year === 'August 2026')
+  // Total paid in the currently selected 12-month period
+  const totalSelectedYearPaid = useMemo(() => {
+    const months = matrixData.months || [];
+    return (salaries || [])
+      .filter(s => months.includes(s.month_year))
       .reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
-  }, [salaries]);
+  }, [salaries, matrixData.months]);
 
+  // Total all-time paid across all years
   const totalAllTimePaid = useMemo(() => {
     return salaries.reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
   }, [salaries]);
 
   // Monthly totals for table footer
   const monthSums = useMemo(() => {
-    const months = matrixData.months || DEFAULT_MONTHS;
+    const months = matrixData.months || [];
     const sums = {};
     months.forEach(m => {
       sums[m] = (matrixData.matrix || []).reduce((acc, row) => {
@@ -344,6 +465,22 @@ export default function SalaryView({ darkMode }) {
     });
     return sums;
   }, [matrixData]);
+
+  // Available years list for selectors
+  const yearsList = useMemo(() => {
+    const generated = generateYearList();
+    if (matrixData.availableYears && matrixData.availableYears.length > 0) {
+      const dbYears = matrixData.availableYears.map(y => y.year);
+      return Array.from(new Set([...generated, ...dbYears])).sort((a, b) => a - b);
+    }
+    return generated;
+  }, [matrixData.availableYears]);
+
+  // Format short label for year cycle (e.g. "FY 2026-27" or "2026")
+  // Format short label for Indian Financial Year (April – March)
+  const periodDisplayLabel = useMemo(() => {
+    return `FY ${selectedYear}-${String(selectedYear + 1).slice(-2)} (Apr '` + String(selectedYear).slice(-2) + ` – Mar '` + String(selectedYear + 1).slice(-2) + `)`;
+  }, [selectedYear]);
 
   return (
     <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 space-y-4 sm:space-y-6">
@@ -360,11 +497,11 @@ export default function SalaryView({ darkMode }) {
                 Team & Salary
               </h1>
               <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-indigo-50 text-indigo-700 dark:bg-indigo-950/70 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
-                GI Payroll
+                Payroll Matrix
               </span>
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400 font-medium line-clamp-1 sm:line-clamp-none">
-              GI Team Remuneration, Monthly Matrix & Status Tracking
+              Unlimited Historical & Future Payroll Sheets, Leave Deduction & Status Matrix
             </p>
           </div>
         </div>
@@ -385,7 +522,7 @@ export default function SalaryView({ darkMode }) {
               });
               setIsAddEmpOpen(true);
             }}
-            className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3.5 py-2 text-xs font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800/80 rounded-xl hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition-all active:scale-95 shadow-2xs"
+            className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3.5 py-2 text-xs font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800/80 rounded-xl hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition-all active:scale-95 shadow-2xs cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             <span>Add Member</span>
@@ -394,20 +531,27 @@ export default function SalaryView({ darkMode }) {
           <button
             onClick={() => {
               const firstEmp = employees[0];
+              const now = new Date();
+              const mName = ALL_MONTHS[now.getMonth()];
+              const yNum = now.getFullYear();
+              const comb = `${mName} ${yNum}`;
+
               setPayForm({
                 employee_id: firstEmp?.id ? String(firstEmp.id) : '',
-                month_year: 'August 2026',
+                month_name: mName,
+                year_num: yNum,
+                month_year: comb,
                 amount: firstEmp?.monthly_salary || '',
                 leave_days: '',
                 working_days: 30,
                 payment_date: getTodayDateString(),
                 payment_mode: 'GPay',
                 reference_no: '',
-                notes: firstEmp ? `Salary payout for ${firstEmp.name} (August 2026)` : ''
+                notes: firstEmp ? `Salary payout for ${firstEmp.name} (${comb})` : ''
               });
               setIsPayModalOpen(true);
             }}
-            className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 rounded-xl shadow-sm shadow-indigo-600/25 transition-all active:scale-95"
+            className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 rounded-xl shadow-sm shadow-indigo-600/25 transition-all active:scale-95 cursor-pointer"
           >
             <IndianRupee className="w-4 h-4" />
             <span>Pay Salary</span>
@@ -418,7 +562,7 @@ export default function SalaryView({ darkMode }) {
       {/* KPI Stats Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
         
-        {/* Total Active Team Members */}
+        {/* Total Team Members */}
         <div className="bg-white dark:bg-slate-900 rounded-2xl p-3.5 sm:p-5 border border-slate-200/80 dark:border-slate-800 shadow-2xs flex flex-col justify-between hover:border-indigo-200 dark:hover:border-indigo-900/50 transition-colors">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
@@ -443,80 +587,146 @@ export default function SalaryView({ darkMode }) {
           </div>
         </div>
 
-        {/* Active Monthly Salary Budget */}
+        {/* Monthly Active Commitment */}
         <div className="bg-white dark:bg-slate-900 rounded-2xl p-3.5 sm:p-5 border border-slate-200/80 dark:border-slate-800 shadow-2xs flex flex-col justify-between hover:border-violet-200 dark:hover:border-violet-900/50 transition-colors">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
               Monthly Budget
             </span>
             <span className="p-1.5 sm:p-2 rounded-xl bg-violet-50 dark:bg-violet-950/70 text-violet-600 dark:text-violet-400">
-              <Briefcase className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <IndianRupee className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </span>
           </div>
           <div>
-            <div className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white truncate">
+            <span className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">
               {formatCurrency(totalMonthlyBudget)}
-            </div>
+            </span>
             <p className="text-[10px] sm:text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 truncate">
-              Active monthly commitment
+              Active monthly payroll liability
             </p>
           </div>
         </div>
 
-        {/* August Paid */}
+        {/* Total Disbursed in Selected Year */}
         <div className="bg-white dark:bg-slate-900 rounded-2xl p-3.5 sm:p-5 border border-slate-200/80 dark:border-slate-800 shadow-2xs flex flex-col justify-between hover:border-emerald-200 dark:hover:border-emerald-900/50 transition-colors">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              Paid (Aug '26)
+            <span className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 truncate">
+              Year Payouts ({selectedYear})
             </span>
             <span className="p-1.5 sm:p-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/70 text-emerald-600 dark:text-emerald-400">
-              <CheckCircle2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <Check className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </span>
           </div>
           <div>
-            <div className="text-xl sm:text-2xl font-black text-emerald-600 dark:text-emerald-400 truncate">
-              {formatCurrency(currentMonthPaid)}
-            </div>
+            <span className="text-xl sm:text-2xl font-black text-emerald-600 dark:text-emerald-400">
+              {formatCurrency(totalSelectedYearPaid)}
+            </span>
             <p className="text-[10px] sm:text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 truncate">
-              {totalMonthlyBudget > 0 ? `${Math.round((currentMonthPaid / totalMonthlyBudget) * 100)}% of budget paid` : 'This month payouts'}
+              Disbursed in {periodDisplayLabel}
             </p>
           </div>
         </div>
 
-        {/* All Time Total Payroll Paid */}
+        {/* All-Time Disbursed */}
         <div className="bg-white dark:bg-slate-900 rounded-2xl p-3.5 sm:p-5 border border-slate-200/80 dark:border-slate-800 shadow-2xs flex flex-col justify-between hover:border-amber-200 dark:hover:border-amber-900/50 transition-colors">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
               All-Time Paid
             </span>
             <span className="p-1.5 sm:p-2 rounded-xl bg-amber-50 dark:bg-amber-950/70 text-amber-600 dark:text-amber-400">
-              <IndianRupee className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <CreditCard className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </span>
           </div>
           <div>
-            <div className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white truncate">
+            <span className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">
               {formatCurrency(totalAllTimePaid)}
-            </div>
+            </span>
             <p className="text-[10px] sm:text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 truncate">
-              {salaries.length} payments recorded
+              {salaries.length} total payout transactions
             </p>
           </div>
         </div>
+
       </div>
 
       {/* Main Container Card */}
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-2xs overflow-hidden">
         
-        {/* Controls & Filter Bar */}
-        <div className="p-3.5 sm:p-4 border-b border-slate-200/80 dark:border-slate-800 flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-slate-50/60 dark:bg-slate-800/40">
+        {/* ========================================================================= */}
+        {/* FINANCIAL YEAR (APR - MAR) SELECTOR TOOLBAR                               */}
+        {/* ========================================================================= */}
+        <div className="p-3 sm:p-4 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-3">
           
-          {/* Top Controls: View Toggle Tabs & Mobile Layout Switcher */}
+          {/* Left: Financial Year Navigator */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center bg-white dark:bg-slate-900 p-1 rounded-xl border border-slate-200 dark:border-slate-700 shadow-2xs">
+              <button
+                onClick={handlePrevYear}
+                className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
+                title="Previous Financial Year"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+
+              <div className="px-2 flex items-center gap-1.5">
+                <Calendar className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                <select
+                  value={selectedYear}
+                  onChange={(e) => setSelectedYear(Number(e.target.value))}
+                  className="bg-transparent text-xs font-black text-slate-900 dark:text-white outline-none cursor-pointer pr-1"
+                >
+                  {yearsList.map((y) => (
+                    <option key={y} value={y} className="dark:bg-slate-900 text-slate-900 dark:text-white">
+                      FY {y}-{String(y + 1).slice(-2)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <button
+                onClick={handleNextYear}
+                className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
+                title="Next Financial Year"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Jump to Current Year Pill */}
+            {selectedYear !== currentFiscalYear && (
+              <button
+                onClick={() => setSelectedYear(currentFiscalYear)}
+                className="px-2.5 py-1 rounded-xl bg-indigo-50 dark:bg-indigo-950/70 border border-indigo-200 dark:border-indigo-800 text-[11px] font-bold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 transition-colors cursor-pointer flex items-center gap-1"
+              >
+                <RotateCcw className="w-3 h-3" />
+                <span>Jump to Current (FY {currentFiscalYear}-{String(currentFiscalYear + 1).slice(-2)})</span>
+              </button>
+            )}
+
+            <span className="text-xs font-bold text-slate-500 dark:text-slate-400 hidden sm:inline">
+              • {matrixData.months.length} Months (Apr '{(String(selectedYear)).slice(-2)} – Mar '{(String(selectedYear + 1)).slice(-2)})
+            </span>
+          </div>
+
+          {/* Right: Permanent Standard Financial Year Badge */}
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/70 border border-indigo-200 dark:border-indigo-800/80 text-xs font-bold text-indigo-700 dark:text-indigo-300 shadow-2xs">
+              <Sparkles className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+              <span>Financial Year: April – March</span>
+            </div>
+          </div>
+
+        </div>
+
+        {/* View Toggle Bar (Matrix vs History & Filters) */}
+        <div className="p-3 sm:p-4 border-b border-slate-200/80 dark:border-slate-800 flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-white dark:bg-slate-900">
+          
+          {/* View Mode Switcher */}
           <div className="flex flex-wrap items-center justify-between sm:justify-start gap-2">
-            {/* View Mode Switcher */}
-            <div className="flex items-center bg-slate-200/80 dark:bg-slate-800 p-1 rounded-xl">
+            <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
               <button
                 onClick={() => setViewMode('matrix')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                   viewMode === 'matrix'
                     ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
@@ -527,23 +737,23 @@ export default function SalaryView({ darkMode }) {
               </button>
               <button
                 onClick={() => setViewMode('list')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                   viewMode === 'list'
                     ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
                 <List className="w-3.5 h-3.5" />
-                <span>History & Team</span>
+                <span>History & Team ({salaries.length})</span>
               </button>
             </div>
 
             {/* Mobile View Toggle (Cards vs Table) for Matrix view */}
             {viewMode === 'matrix' && (
-              <div className="flex md:hidden items-center bg-slate-200/80 dark:bg-slate-800 p-1 rounded-xl text-[11px] font-bold">
+              <div className="flex md:hidden items-center bg-slate-100 dark:bg-slate-800 p-1 rounded-xl text-[11px] font-bold">
                 <button
                   onClick={() => setMobileMatrixView('cards')}
-                  className={`px-2.5 py-1 rounded-lg transition-all ${
+                  className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
                     mobileMatrixView === 'cards'
                       ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
                       : 'text-slate-600 dark:text-slate-400'
@@ -553,7 +763,7 @@ export default function SalaryView({ darkMode }) {
                 </button>
                 <button
                   onClick={() => setMobileMatrixView('table')}
-                  className={`px-2.5 py-1 rounded-lg transition-all ${
+                  className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
                     mobileMatrixView === 'table'
                       ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
                       : 'text-slate-600 dark:text-slate-400'
@@ -572,15 +782,15 @@ export default function SalaryView({ darkMode }) {
               <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
-                placeholder="Search name or role..."
+                placeholder="Search member, role..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full sm:w-48 pl-8 pr-7 py-1.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-indigo-500 font-medium transition-colors"
+                className="w-full sm:w-48 pl-8 pr-7 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-indigo-500 font-medium transition-colors"
               />
               {searchTerm && (
                 <button
                   onClick={() => setSearchTerm('')}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
@@ -591,7 +801,7 @@ export default function SalaryView({ darkMode }) {
             <select
               value={roleFilter}
               onChange={(e) => setRoleFilter(e.target.value)}
-              className="bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:border-indigo-500 font-medium transition-colors"
+              className="bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:border-indigo-500 font-medium transition-colors cursor-pointer"
             >
               <option value="">All Roles</option>
               {JOB_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
@@ -601,20 +811,21 @@ export default function SalaryView({ darkMode }) {
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:border-indigo-500 font-medium transition-colors"
+              className="bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:border-indigo-500 font-medium transition-colors cursor-pointer"
             >
               <option value="">All Status</option>
               <option value="Active">Active Only</option>
               <option value="Leave">Left Company</option>
             </select>
           </div>
+
         </div>
 
         {/* View Content */}
         {loading ? (
           <div className="py-16 flex flex-col items-center justify-center gap-3 text-slate-500">
             <div className="w-7 h-7 border-3 border-indigo-600 border-t-transparent rounded-full animate-spin" />
-            <p className="text-xs font-semibold">Loading Team & Salary Sheet...</p>
+            <p className="text-xs font-semibold">Loading Team & Salary Sheet for {periodDisplayLabel}...</p>
           </div>
         ) : viewMode === 'matrix' ? (
           <div>
@@ -624,16 +835,16 @@ export default function SalaryView({ darkMode }) {
             {/* ========================================================================= */}
             <div className={`${mobileMatrixView === 'cards' ? 'block md:hidden' : 'hidden'} p-3 space-y-3`}>
               {filteredMatrix.length === 0 ? (
-                <div className="text-center py-10 text-slate-400 dark:text-slate-500 text-xs">
+                <div className="text-center py-12 text-slate-400 dark:text-slate-500 text-xs">
                   No team members match the search filters.
                 </div>
               ) : (
-                filteredMatrix.map((emp, idx) => {
+                filteredMatrix.map((emp) => {
                   const isLeave = emp.status === 'Leave';
                   const isExpanded = Boolean(expandedCards[emp.id]);
-                  const monthsList = matrixData.months || DEFAULT_MONTHS;
+                  const monthsList = matrixData.months || [];
                   
-                  // Count how many months paid
+                  // Count how many months paid in this year
                   const paidMonthsCount = monthsList.filter(m => (emp.monthly_payouts?.[m]?.amount || 0) > 0).length;
 
                   return (
@@ -683,14 +894,14 @@ export default function SalaryView({ darkMode }) {
                         <div className="flex items-center gap-0.5 shrink-0">
                           <button
                             onClick={() => handleOpenEditEmp(emp)}
-                            className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+                            className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
                             title="Edit"
                           >
                             <Edit3 className="w-3.5 h-3.5" />
                           </button>
                           <button
                             onClick={() => handleDeleteEmp(emp.id, emp.name)}
-                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
                             title="Delete"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -711,17 +922,22 @@ export default function SalaryView({ darkMode }) {
 
                         <div className="flex items-center gap-2">
                           <button
-                            onClick={() => handleOpenQuickPay(emp.id, 'August 2026', emp.monthly_salary)}
-                            className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold flex items-center gap-1 shadow-xs active:scale-95 transition-all"
+                            onClick={() => {
+                              // Default to current month or first unpaid month in the year
+                              const unpaidMonth = monthsList.find(m => !(emp.monthly_payouts?.[m]?.amount > 0)) || monthsList[0] || currentActiveMonthYear;
+                              handleOpenQuickPay(emp.id, unpaidMonth, emp.monthly_salary);
+                            }}
+                            className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold flex items-center gap-1 shadow-xs active:scale-95 transition-all cursor-pointer"
                           >
                             <IndianRupee className="w-3 h-3" />
-                            <span>Pay Aug</span>
+                            <span>Pay Salary</span>
                           </button>
+
                           <button
                             onClick={() => toggleCardExpanded(emp.id)}
-                            className="px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 text-xs font-bold flex items-center gap-1 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                            className="px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 text-xs font-bold flex items-center gap-1 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                           >
-                            <span>{paidMonthsCount}/12</span>
+                            <span>{paidMonthsCount}/{monthsList.length}</span>
                             <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
                           </button>
                         </div>
@@ -732,7 +948,7 @@ export default function SalaryView({ darkMode }) {
                         <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800/80 animate-in fade-in duration-200">
                           <div className="flex items-center justify-between mb-2">
                             <span className="text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">
-                              12-Month Payout Status
+                              {selectedYear} Payout Status
                             </span>
                             <span className="text-[10px] text-slate-400">
                               Tap month to pay or view
@@ -744,13 +960,15 @@ export default function SalaryView({ darkMode }) {
                               const payout = emp.monthly_payouts?.[monthName];
                               const paidAmount = payout?.amount || 0;
                               const isPaid = paidAmount > 0;
-                              const shortMonth = monthName.replace(' 2026', '').replace(' 2027', "'27");
+                              
+                              const [mPart, yPart] = monthName.split(' ');
+                              const shortMonth = `${mPart.slice(0, 3)} '${(yPart || '').slice(-2)}`;
 
                               return (
                                 <button
                                   key={monthName}
                                   onClick={() => handleOpenQuickPay(emp.id, monthName, emp.monthly_salary)}
-                                  className={`p-1.5 rounded-lg text-left transition-all border ${
+                                  className={`p-1.5 rounded-lg text-left transition-all border cursor-pointer ${
                                     isPaid
                                       ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-200 dark:border-emerald-800/80 text-emerald-800 dark:text-emerald-300'
                                       : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200/80 dark:border-slate-800 text-slate-500 dark:text-slate-400 hover:border-indigo-300'
@@ -804,26 +1022,39 @@ export default function SalaryView({ darkMode }) {
                       Status
                     </th>
 
-                    {/* Month Columns */}
-                    {(matrixData.months || DEFAULT_MONTHS).map((month) => (
-                      <th
-                        key={month}
-                        className={`p-3 border-b border-r border-slate-200 dark:border-slate-700/70 font-extrabold text-center min-w-[110px] whitespace-nowrap ${
-                          month.includes('August 2026')
-                            ? 'bg-indigo-50/80 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300'
-                            : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
-                        }`}
-                      >
-                        {month.replace(' 2026', '').replace(' 2027', "'27")}
-                      </th>
-                    ))}
+                    {/* Dynamic Month Columns for selected period */}
+                    {(matrixData.months || []).map((month) => {
+                      const isCurrent = month === currentActiveMonthYear;
+                      const [mPart, yPart] = month.split(' ');
+                      const shortMonth = `${mPart.slice(0, 3)} '${(yPart || '').slice(-2)}`;
+
+                      return (
+                        <th
+                          key={month}
+                          className={`p-3 border-b border-r border-slate-200 dark:border-slate-700/70 font-extrabold text-center min-w-[110px] whitespace-nowrap ${
+                            isCurrent
+                              ? 'bg-indigo-50/90 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300'
+                              : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+                          }`}
+                        >
+                          <div className="flex flex-col items-center">
+                            <span>{shortMonth}</span>
+                            {isCurrent && (
+                              <span className="text-[9px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-tighter">
+                                Active
+                              </span>
+                            )}
+                          </div>
+                        </th>
+                      );
+                    })}
                   </tr>
                 </thead>
 
                 <tbody className="divide-y divide-slate-200 dark:divide-slate-800/80">
                   {filteredMatrix.length === 0 ? (
                     <tr>
-                      <td colSpan={5 + DEFAULT_MONTHS.length} className="text-center py-12 text-slate-500 dark:text-slate-400 font-medium">
+                      <td colSpan={5 + (matrixData.months || []).length} className="text-center py-12 text-slate-500 dark:text-slate-400 font-medium">
                         No team members found matching your search.
                       </td>
                     </tr>
@@ -850,7 +1081,7 @@ export default function SalaryView({ darkMode }) {
                             <button
                               onClick={() => handleOpenEditEmp(emp)}
                               title="Edit Employee details"
-                              className="opacity-0 group-hover:opacity-100 hover:text-indigo-600 text-slate-400 p-1 transition-opacity"
+                              className="opacity-0 group-hover:opacity-100 hover:text-indigo-600 text-slate-400 p-1 transition-opacity cursor-pointer"
                             >
                               <Edit3 className="w-3 h-3" />
                             </button>
@@ -885,7 +1116,7 @@ export default function SalaryView({ darkMode }) {
                           </td>
 
                           {/* Monthly Salary Cells */}
-                          {(matrixData.months || DEFAULT_MONTHS).map((monthName) => {
+                          {(matrixData.months || []).map((monthName) => {
                             const payout = emp.monthly_payouts?.[monthName];
                             const paidAmount = payout?.amount || 0;
                             const isPaid = paidAmount > 0;
@@ -898,16 +1129,16 @@ export default function SalaryView({ darkMode }) {
                                 {isPaid ? (
                                   <button
                                     onClick={() => handleOpenQuickPay(emp.id, monthName, emp.monthly_salary)}
-                                    title={`Paid ₹${paidAmount}. Click to edit payout.`}
-                                    className="w-full px-2 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 font-extrabold text-[11px] hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all flex items-center justify-center gap-1 shadow-2xs"
+                                    title={`Paid ₹${paidAmount} for ${monthName}. Tap to view or edit details.`}
+                                    className="w-full px-2 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 font-extrabold text-[11px] hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all flex items-center justify-center gap-1 shadow-2xs cursor-pointer"
                                   >
                                     <Check className="w-3 h-3 text-emerald-600 shrink-0" />
-                                    <span>{paidAmount >= 1000 ? `${(paidAmount / 1000).toFixed(paidAmount % 1000 === 0 ? 0 : 1)}k` : paidAmount}</span>
+                                    <span>₹{paidAmount >= 1000 ? `${(paidAmount / 1000).toFixed(paidAmount % 1000 === 0 ? 0 : 1)}k` : paidAmount}</span>
                                   </button>
                                 ) : (
                                   <button
                                     onClick={() => handleOpenQuickPay(emp.id, monthName, emp.monthly_salary)}
-                                    className="px-2 py-1 rounded-lg text-[10px] font-semibold text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 border border-transparent hover:border-indigo-200 dark:hover:border-indigo-800 transition-all"
+                                    className="px-2 py-1 rounded-lg text-[10px] font-semibold text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 border border-transparent hover:border-indigo-200 dark:hover:border-indigo-800 transition-all cursor-pointer"
                                   >
                                     + Pay
                                   </button>
@@ -931,7 +1162,7 @@ export default function SalaryView({ darkMode }) {
                       {formatCurrency(totalMonthlyBudget)}
                     </td>
                     <td className="p-3 text-center text-slate-400">—</td>
-                    {(matrixData.months || DEFAULT_MONTHS).map((m) => {
+                    {(matrixData.months || []).map((m) => {
                       const totalM = monthSums[m] || 0;
                       return (
                         <td key={m} className="p-3 text-center font-black text-slate-900 dark:text-white border-r border-slate-200 dark:border-slate-700/70">
@@ -1002,14 +1233,14 @@ export default function SalaryView({ darkMode }) {
                       <div className="flex items-center gap-1">
                         <button
                           onClick={() => handleOpenEditEmp(emp)}
-                          className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+                          className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
                           title="Edit"
                         >
                           <Edit3 className="w-3.5 h-3.5" />
                         </button>
                         <button
                           onClick={() => handleDeleteEmp(emp.id, emp.name)}
-                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
                           title="Delete"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -1023,8 +1254,8 @@ export default function SalaryView({ darkMode }) {
                         <span className="font-black text-xs text-slate-900 dark:text-white">{formatCurrency(emp.monthly_salary)}</span>
                       </div>
                       <button
-                        onClick={() => handleOpenQuickPay(emp.id, 'August 2026', emp.monthly_salary)}
-                        className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 text-[11px] font-bold rounded-lg border border-indigo-200 dark:border-indigo-800/80 transition-colors"
+                        onClick={() => handleOpenQuickPay(emp.id, currentActiveMonthYear, emp.monthly_salary)}
+                        className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 text-[11px] font-bold rounded-lg border border-indigo-200 dark:border-indigo-800/80 transition-colors cursor-pointer"
                       >
                         + Pay Salary
                       </button>
@@ -1036,19 +1267,34 @@ export default function SalaryView({ darkMode }) {
 
             {/* Salary Payment History Log */}
             <div>
-              <div className="flex items-center justify-between mb-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
                 <h3 className="text-xs sm:text-sm font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
                   <CreditCard className="w-4 h-4 text-indigo-600" />
-                  Salary Payout Logs ({salaries.length})
+                  Salary Payout Logs ({filteredHistory.length})
                 </h3>
+
+                {/* Filter by Year */}
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-slate-500">Filter Year:</span>
+                  <select
+                    value={historyYearFilter}
+                    onChange={(e) => setHistoryYearFilter(e.target.value)}
+                    className="bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-2.5 py-1 text-xs text-slate-900 dark:text-white font-bold outline-none cursor-pointer"
+                  >
+                    <option value="all">All Years</option>
+                    {yearsList.map(y => (
+                      <option key={y} value={String(y)}>Year {y}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               {/* Mobile Cards for Payment Logs (< 768px) */}
               <div className="block md:hidden space-y-2.5">
-                {salaries.length === 0 ? (
-                  <div className="text-center py-8 text-slate-500 text-xs">No salary payment logs recorded yet.</div>
+                {filteredHistory.length === 0 ? (
+                  <div className="text-center py-8 text-slate-500 text-xs">No salary payment logs recorded for this selection.</div>
                 ) : (
-                  salaries.map((sal) => (
+                  filteredHistory.map((sal) => (
                     <div
                       key={sal.id}
                       className="p-3 bg-white dark:bg-slate-900/80 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xs flex items-center justify-between gap-3"
@@ -1075,7 +1321,7 @@ export default function SalaryView({ darkMode }) {
                         </span>
                         <button
                           onClick={() => handleDeleteSalary(sal.id)}
-                          className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                          className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -1099,12 +1345,12 @@ export default function SalaryView({ darkMode }) {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200 dark:divide-slate-800 font-medium">
-                    {salaries.length === 0 ? (
+                    {filteredHistory.length === 0 ? (
                       <tr>
-                        <td colSpan="6" className="text-center py-8 text-slate-500">No salary payment logs recorded yet.</td>
+                        <td colSpan="6" className="text-center py-8 text-slate-500">No salary payment logs recorded for this selection.</td>
                       </tr>
                     ) : (
-                      salaries.map((sal) => (
+                      filteredHistory.map((sal) => (
                         <tr key={sal.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
                           <td className="p-3 text-slate-600 dark:text-slate-400">{formatDate(sal.payment_date)}</td>
                           <td className="p-3 font-bold text-slate-900 dark:text-white">
@@ -1124,7 +1370,7 @@ export default function SalaryView({ darkMode }) {
                           <td className="p-3 text-center">
                             <button
                               onClick={() => handleDeleteSalary(sal.id)}
-                              className="text-slate-400 hover:text-rose-600 p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                              className="text-slate-400 hover:text-rose-600 p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
@@ -1157,22 +1403,22 @@ export default function SalaryView({ darkMode }) {
             <input
               type="text"
               required
-              placeholder="e.g. Aryan Mithani, Dvishti Patel..."
+              placeholder="e.g. Ayan Shaikh"
               value={empForm.name}
               onChange={(e) => setEmpForm({ ...empForm, name: e.target.value })}
-              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-indigo-600 font-medium"
+              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-white text-xs focus:outline-none focus:border-indigo-600 font-medium"
             />
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                Job Role <span className="text-rose-600">*</span>
+                Job Role / Designation
               </label>
               <select
                 value={empForm.job_role}
                 onChange={(e) => setEmpForm({ ...empForm, job_role: e.target.value })}
-                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-white text-xs focus:outline-none focus:border-indigo-600 font-medium"
+                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-white text-xs focus:outline-none focus:border-indigo-600 font-medium cursor-pointer"
               >
                 {JOB_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
               </select>
@@ -1180,14 +1426,16 @@ export default function SalaryView({ darkMode }) {
 
             <div>
               <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                Monthly Remuneration (₹)
+                Monthly Salary (₹) <span className="text-rose-600">*</span>
               </label>
               <input
                 type="number"
-                placeholder="e.g. 20000"
+                required
+                min="0"
+                placeholder="e.g. 25000"
                 value={empForm.monthly_salary}
                 onChange={(e) => setEmpForm({ ...empForm, monthly_salary: e.target.value })}
-                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-indigo-600 font-bold"
+                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-white text-xs focus:outline-none focus:border-indigo-600 font-medium"
               />
             </div>
           </div>
@@ -1195,62 +1443,77 @@ export default function SalaryView({ darkMode }) {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                Status
+                Phone Number
               </label>
-              <select
-                value={empForm.status}
-                onChange={(e) => setEmpForm({ ...empForm, status: e.target.value })}
+              <input
+                type="tel"
+                placeholder="e.g. +91 98765 43210"
+                value={empForm.phone}
+                onChange={(e) => setEmpForm({ ...empForm, phone: e.target.value })}
                 className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-white text-xs focus:outline-none focus:border-indigo-600 font-medium"
-              >
-                <option value="Active">Active (Working)</option>
-                <option value="Leave">Left Company (Resigned)</option>
-              </select>
+              />
             </div>
 
             <div>
               <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                Phone Number
+                Employment Status
               </label>
-              <input
-                type="text"
-                placeholder="+91 98765 43210"
-                value={empForm.phone}
-                onChange={(e) => setEmpForm({ ...empForm, phone: e.target.value })}
-                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-indigo-600 font-medium"
-              />
+              <select
+                value={empForm.status}
+                onChange={(e) => setEmpForm({ ...empForm, status: e.target.value })}
+                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-white text-xs focus:outline-none focus:border-indigo-600 font-medium cursor-pointer"
+              >
+                <option value="Active">Active Team Member</option>
+                <option value="Leave">Left Company</option>
+              </select>
             </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+              Notes & Special Terms
+            </label>
+            <textarea
+              rows="2"
+              placeholder="Leave policies, emergency contact, joining notes..."
+              value={empForm.notes}
+              onChange={(e) => setEmpForm({ ...empForm, notes: e.target.value })}
+              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-white text-xs focus:outline-none focus:border-indigo-600 font-medium"
+            />
           </div>
 
           <div className="flex justify-end gap-2 pt-3 border-t border-slate-200 dark:border-slate-800">
             <button
               type="button"
               onClick={() => setIsAddEmpOpen(false)}
-              className="px-4 py-2 rounded-xl border border-slate-300 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              className="px-4 py-2 rounded-xl border border-slate-300 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-all shadow-sm shadow-indigo-600/20 active:scale-95"
+              className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-sm shadow-indigo-600/20 active:scale-95 transition-all cursor-pointer"
             >
-              {editingEmp ? "Save Changes" : "Add Team Member"}
+              {editingEmp ? 'Update Member' : 'Add Team Member'}
             </button>
           </div>
         </form>
       </Modal>
 
-      {/* ========================================== */}
-      {/* MODAL: RECORD SALARY PAYOUT                */}
-      {/* ========================================== */}
+      {/* ========================================================================= */}
+      {/* MODAL: PAY SALARY WITH UNLIMITED HISTORICAL & FUTURE MONTH/YEAR ENGINE     */}
+      {/* ========================================================================= */}
       <Modal
         isOpen={isPayModalOpen}
         onClose={() => setIsPayModalOpen(false)}
         title="Record Salary Payout"
       >
         <form onSubmit={handlePaySubmit} className="space-y-4">
+          
+          {/* Employee Picker */}
           <div>
             <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-              Team Member <span className="text-rose-600">*</span>
+              Select Team Member <span className="text-rose-600">*</span>
             </label>
             <select
               required
@@ -1258,25 +1521,18 @@ export default function SalaryView({ darkMode }) {
               onChange={(e) => {
                 const empId = e.target.value;
                 const selectedEmp = employees.find(emp => String(emp.id) === String(empId));
-                const baseSalary = Number(selectedEmp?.monthly_salary || 0);
-                const totalDays = Math.max(1, Number(payForm.working_days || 30));
-                const leaveDays = Math.max(0, Number(payForm.leave_days || 0));
-                const deduction = Math.round((baseSalary / totalDays) * leaveDays);
-                const netAmount = Math.max(0, baseSalary - deduction);
-
                 setPayForm(prev => ({
                   ...prev,
                   employee_id: empId,
-                  amount: netAmount || baseSalary || '',
-                  notes: leaveDays > 0
-                    ? `Salary payout for ${selectedEmp?.name || ''} (${prev.month_year}) (${leaveDays} days unpaid leave: -₹${deduction.toLocaleString('en-IN')})`
-                    : `Salary payout for ${selectedEmp?.name || ''} (${prev.month_year})`
+                  amount: selectedEmp?.monthly_salary || '',
+                  leave_days: '',
+                  notes: selectedEmp ? `Salary payout for ${selectedEmp.name} (${prev.month_year})` : ''
                 }));
               }}
-              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-indigo-600 font-medium"
+              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-white text-xs focus:outline-none focus:border-indigo-600 font-bold cursor-pointer"
             >
-              <option value="" disabled>Select Team Member</option>
-              {employees.map(e => (
+              <option value="">-- Choose Employee --</option>
+              {employees.map((e) => (
                 <option key={e.id} value={e.id}>
                   {e.name} ({e.job_role}) — {formatCurrency(e.monthly_salary)}
                 </option>
@@ -1284,35 +1540,75 @@ export default function SalaryView({ darkMode }) {
             </select>
           </div>
 
-          <div>
-            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-              Month / Period <span className="text-rose-600">*</span>
-            </label>
-            <select
-              required
-              value={payForm.month_year}
-              onChange={(e) => {
-                const newMonth = e.target.value;
-                setPayForm(prev => {
-                  const emp = employees.find(emp => String(emp.id) === String(prev.employee_id));
-                  const leaveDays = Math.max(0, Number(prev.leave_days || 0));
-                  const baseSalary = Number(emp?.monthly_salary || 0);
-                  const totalDays = Math.max(1, Number(prev.working_days || 30));
-                  const deduction = Math.round((baseSalary / totalDays) * leaveDays);
+          {/* DYNAMIC MONTH & YEAR SELECTOR (Full Historical & Future Support) */}
+          <div className="p-3 bg-indigo-50/60 dark:bg-indigo-950/40 rounded-xl border border-indigo-200 dark:border-indigo-900/60 space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="block text-xs font-black text-indigo-950 dark:text-indigo-200 uppercase tracking-wider flex items-center gap-1.5">
+                <Calendar className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                <span>Salary Period: {payForm.month_year}</span>
+              </label>
 
-                  return {
-                    ...prev,
-                    month_year: newMonth,
-                    notes: leaveDays > 0
-                      ? `Salary payout for ${emp?.name || ''} (${newMonth}) (${leaveDays} days unpaid leave: -₹${deduction.toLocaleString('en-IN')})`
-                      : `Salary payout for ${emp?.name || ''} (${newMonth})`
-                  };
-                });
-              }}
-              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-white text-xs focus:outline-none focus:border-indigo-600 font-bold"
-            >
-              {DEFAULT_MONTHS.map(m => <option key={m} value={m}>{m}</option>)}
-            </select>
+              {/* Quick Presets */}
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setQuickPresetMonth('prev')}
+                  className="px-2 py-0.5 rounded-md bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[10px] font-bold text-slate-700 dark:text-slate-300 hover:border-indigo-400 cursor-pointer"
+                >
+                  Prev Mo.
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setQuickPresetMonth('current')}
+                  className="px-2 py-0.5 rounded-md bg-indigo-600 text-white text-[10px] font-bold shadow-2xs hover:bg-indigo-700 cursor-pointer"
+                >
+                  Current
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setQuickPresetMonth('next')}
+                  className="px-2 py-0.5 rounded-md bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[10px] font-bold text-slate-700 dark:text-slate-300 hover:border-indigo-400 cursor-pointer"
+                >
+                  Next Mo.
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2.5">
+              {/* Month Selector */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
+                  Month
+                </label>
+                <select
+                  required
+                  value={payForm.month_name}
+                  onChange={(e) => updatePayModalMonthYear(e.target.value, payForm.year_num)}
+                  className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-white text-xs font-black focus:outline-none focus:border-indigo-600 cursor-pointer"
+                >
+                  {ALL_MONTHS.map(m => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Year Selector (Supports all historical and future years) */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
+                  Year
+                </label>
+                <select
+                  required
+                  value={payForm.year_num}
+                  onChange={(e) => updatePayModalMonthYear(payForm.month_name, Number(e.target.value))}
+                  className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-white text-xs font-black focus:outline-none focus:border-indigo-600 cursor-pointer"
+                >
+                  {yearsList.map(y => (
+                    <option key={y} value={y}>Year {y}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
           </div>
 
           {/* DUPLICATE SALARY PAYMENT WARNING */}
@@ -1369,11 +1665,12 @@ export default function SalaryView({ darkMode }) {
                     setPayForm(prev => ({ ...prev, working_days: days }));
                     handleLeaveDaysChange(payForm.leave_days, payForm.employee_id, days);
                   }}
-                  className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-1.5 text-slate-900 dark:text-white text-xs font-bold focus:outline-none focus:border-indigo-600"
+                  className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-1.5 text-slate-900 dark:text-white text-xs font-bold focus:outline-none focus:border-indigo-600 cursor-pointer"
                 >
                   <option value={30}>30 Days (Standard)</option>
                   <option value={31}>31 Days</option>
                   <option value={28}>28 Days (Feb)</option>
+                  <option value={29}>29 Days (Leap Feb)</option>
                 </select>
               </div>
             </div>
@@ -1427,7 +1724,7 @@ export default function SalaryView({ darkMode }) {
               <select
                 value={payForm.payment_mode}
                 onChange={(e) => setPayForm({ ...payForm, payment_mode: e.target.value })}
-                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-white text-xs focus:outline-none focus:border-indigo-600 font-medium"
+                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-white text-xs focus:outline-none focus:border-indigo-600 font-medium cursor-pointer"
               >
                 <option value="GPay">GPay</option>
                 <option value="PhonePe">PhonePe</option>
@@ -1469,14 +1766,14 @@ export default function SalaryView({ darkMode }) {
             <button
               type="button"
               onClick={() => setIsPayModalOpen(false)}
-              className="px-4 py-2 rounded-xl border border-slate-300 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              className="px-4 py-2 rounded-xl border border-slate-300 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={Boolean(existingPaidEntry)}
-              className={`px-5 py-2 rounded-xl text-xs font-bold transition-all ${
+              className={`px-5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                 existingPaidEntry
                   ? 'bg-slate-300 dark:bg-slate-800 text-slate-500 dark:text-slate-500 cursor-not-allowed border border-slate-300 dark:border-slate-700'
                   : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm shadow-indigo-600/20 active:scale-95'
