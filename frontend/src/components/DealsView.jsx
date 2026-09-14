@@ -29,7 +29,8 @@ import {
   TrendingUp,
   TrendingDown,
   Layers,
-  User
+  User,
+  X
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { api } from '../utils/api';
@@ -170,6 +171,10 @@ export default function DealsView({
       setLoadingHistory(false);
     }
   };
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }, []);
 
   useEffect(() => {
     loadDeals();
@@ -738,102 +743,164 @@ export default function DealsView({
   const activeCount = deals.filter(d => d.status === 'active').length;
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+    <div className="space-y-4 sm:space-y-6 max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6">
       
       {/* Header Bar */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-black text-slate-900 dark:text-white flex items-center gap-2">
-            <Handshake className="w-7 h-7 text-indigo-600 dark:text-indigo-400" />
-            Client Deals & Receivables
-          </h2>
-          <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
-            Track client service packages, advance tokens, pending collections, renewals & contract closures
-          </p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 sm:gap-4 bg-white dark:bg-slate-900/90 p-4 sm:p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-2xs">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-gradient-to-br from-indigo-500 to-indigo-700 text-white flex items-center justify-center shadow-md shadow-indigo-600/20 shrink-0">
+            <Handshake className="w-5 h-5 sm:w-6 sm:h-6" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-lg sm:text-2xl font-black tracking-tight text-slate-900 dark:text-white">
+                Client Deals & Receivables
+              </h1>
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-indigo-50 text-indigo-700 dark:bg-indigo-950/70 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                GI CRM
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium line-clamp-1 sm:line-clamp-none">
+              Client Packages, Advance Tokens, Collections & Renewals
+            </p>
+          </div>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100 dark:border-slate-800/80">
           <button
             onClick={handleExport}
-            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 text-xs font-bold border border-slate-200 dark:border-slate-800 shadow-2xs transition-colors"
+            className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 text-xs font-bold border border-slate-200 dark:border-slate-800 shadow-2xs transition-colors active:scale-95"
           >
             <Download className="w-4 h-4 text-slate-500 dark:text-slate-400" />
-            Export Excel/CSV
+            <span>Export</span>
           </button>
           <button
             onClick={handleOpenAdd}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 dark:bg-indigo-600 dark:hover:bg-indigo-500 text-xs sm:text-sm font-bold transition-all shadow-sm shadow-indigo-600/20 active:scale-95"
+            className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white text-xs font-bold transition-all shadow-sm shadow-indigo-600/25 active:scale-95"
           >
             <Plus className="w-4 h-4" />
-            + New Client Deal
+            <span>+ New Deal</span>
           </button>
         </div>
       </div>
 
-      {/* Overview Cards (4 Grid with Lost Bad Debt) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-2xs transition-colors">
-          <span className="text-xs text-indigo-700 dark:text-indigo-400 font-bold uppercase tracking-wider">Total Deals Value</span>
-          <div className="text-2xl font-black text-slate-900 dark:text-white mt-1">{formatCurrency(totalDealValue)}</div>
-          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">{deals.length} total closed clients</p>
+      {/* Overview Cards (4 Responsive Grid) */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
+        {/* Total Deals Value */}
+        <div className="bg-white dark:bg-slate-900 rounded-2xl p-3.5 sm:p-4 border border-slate-200/80 dark:border-slate-800 shadow-2xs flex flex-col justify-between hover:border-indigo-200 dark:hover:border-indigo-900/50 transition-colors">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider">
+              Total Deals Value
+            </span>
+            <span className="p-1.5 sm:p-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/70 text-indigo-600 dark:text-indigo-400">
+              <Handshake className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            </span>
+          </div>
+          <div>
+            <div className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white truncate">
+              {formatCurrency(totalDealValue)}
+            </div>
+            <p className="text-[10px] sm:text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 truncate">
+              {deals.length} total closed clients
+            </p>
+          </div>
         </div>
 
-        <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-2xs transition-colors">
-          <span className="text-xs text-emerald-700 dark:text-emerald-400 font-bold uppercase tracking-wider">Total Received</span>
-          <div className="text-2xl font-black text-emerald-600 dark:text-emerald-400 mt-1">{formatCurrency(totalCollected)}</div>
-          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-            {totalDealValue > 0 ? ((totalCollected / totalDealValue) * 100).toFixed(0) : 0}% collected
-          </p>
+        {/* Total Received */}
+        <div className="bg-white dark:bg-slate-900 rounded-2xl p-3.5 sm:p-4 border border-slate-200/80 dark:border-slate-800 shadow-2xs flex flex-col justify-between hover:border-emerald-200 dark:hover:border-emerald-900/50 transition-colors">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider">
+              Total Received
+            </span>
+            <span className="p-1.5 sm:p-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/70 text-emerald-600 dark:text-emerald-400">
+              <TrendingUp className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            </span>
+          </div>
+          <div>
+            <div className="text-xl sm:text-2xl font-black text-emerald-600 dark:text-emerald-400 truncate">
+              {formatCurrency(totalCollected)}
+            </div>
+            <p className="text-[10px] sm:text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 truncate">
+              {totalDealValue > 0 ? ((totalCollected / totalDealValue) * 100).toFixed(0) : 0}% collected
+            </p>
+          </div>
         </div>
 
-        <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-2xs transition-colors">
-          <span className="text-xs text-amber-700 dark:text-amber-400 font-bold uppercase tracking-wider">Active Collectibles</span>
-          <div className="text-2xl font-black text-amber-600 dark:text-amber-400 mt-1">{formatCurrency(totalPending)}</div>
-          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">{activeCount} active retainers</p>
+        {/* Active Collectibles */}
+        <div className="bg-white dark:bg-slate-900 rounded-2xl p-3.5 sm:p-4 border border-slate-200/80 dark:border-slate-800 shadow-2xs flex flex-col justify-between hover:border-amber-200 dark:hover:border-amber-900/50 transition-colors">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider">
+              Active Collectibles
+            </span>
+            <span className="p-1.5 sm:p-2 rounded-xl bg-amber-50 dark:bg-amber-950/70 text-amber-600 dark:text-amber-400">
+              <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            </span>
+          </div>
+          <div>
+            <div className="text-xl sm:text-2xl font-black text-amber-600 dark:text-amber-400 truncate">
+              {formatCurrency(totalPending)}
+            </div>
+            <p className="text-[10px] sm:text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 truncate">
+              {activeCount} active retainers
+            </p>
+          </div>
         </div>
 
-        <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-2xs transition-colors">
-          <span className="text-xs text-rose-700 dark:text-rose-400 font-bold uppercase tracking-wider flex items-center justify-between">
-            <span>Lost / Bad Debt</span>
-            {lostCount > 0 && (
-              <span className="px-1.5 py-0.2 rounded-full bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300 text-[10px] font-extrabold">
-                {lostCount} Lost
-              </span>
-            )}
-          </span>
-          <div className="text-2xl font-black text-rose-600 dark:text-rose-400 mt-1">{formatCurrency(totalLost)}</div>
-          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">Uncollectible default write-offs</p>
+        {/* Lost / Bad Debt */}
+        <div className="bg-white dark:bg-slate-900 rounded-2xl p-3.5 sm:p-4 border border-slate-200/80 dark:border-slate-800 shadow-2xs flex flex-col justify-between hover:border-rose-200 dark:hover:border-rose-900/50 transition-colors">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider">
+              Lost / Bad Debt
+            </span>
+            <span className="p-1.5 sm:p-2 rounded-xl bg-rose-50 dark:bg-rose-950/70 text-rose-600 dark:text-rose-400">
+              <AlertTriangle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            </span>
+          </div>
+          <div>
+            <div className="text-xl sm:text-2xl font-black text-rose-600 dark:text-rose-400 truncate">
+              {formatCurrency(totalLost)}
+            </div>
+            <p className="text-[10px] sm:text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 truncate">
+              {lostCount > 0 ? `${lostCount} default write-offs` : 'Zero bad debt'}
+            </p>
+          </div>
         </div>
       </div>
 
-      {/* Filter & Search Bar with 4 Tabs */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-2xs flex flex-col sm:flex-row items-center justify-between gap-4 transition-colors">
-        
-        {/* Search */}
-        <div className="relative w-full sm:w-72">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-          <input
-            type="text"
-            placeholder="Search client, company, phone, notes..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl pl-9 pr-3 py-2 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-indigo-600 focus:bg-white dark:focus:bg-slate-900"
-          />
-        </div>
+      {/* Filter & Search Controls Bar */}
+      <div className="bg-white dark:bg-slate-900 rounded-2xl p-3.5 sm:p-4 border border-slate-200/80 dark:border-slate-800 shadow-2xs space-y-3 transition-colors">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          {/* Search Input with Clear Button */}
+          <div className="relative flex-1 min-w-[200px]">
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              placeholder="Search client, company, phone, notes..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl pl-8 pr-8 py-2 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-indigo-600 font-medium"
+            />
+            {search && (
+              <button
+                onClick={() => setSearch('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
 
-        {/* View Mode & Status Controls */}
-        <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto justify-end">
-          {/* View Mode Toggle (Current Clients vs All Cycles) */}
-          <div className="flex items-center p-1 bg-slate-100 dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700 shrink-0">
+          {/* View Mode Toggle */}
+          <div className="flex items-center bg-slate-100 dark:bg-slate-800/80 p-1 rounded-xl border border-slate-200 dark:border-slate-700 shrink-0">
             <button
               type="button"
               onClick={() => setViewMode('current')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
                 viewMode === 'current'
-                  ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-2xs'
+                  ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
-              title="Show current active/latest contract per client (prevents duplicate client cards)"
+              title="Show current active/latest contract per client"
             >
               <User className="w-3.5 h-3.5" />
               <span>Current Clients</span>
@@ -843,7 +910,7 @@ export default function DealsView({
               onClick={() => setViewMode('all')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
                 viewMode === 'all'
-                  ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-2xs'
+                  ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
               title="Show all contract cycles ever created"
@@ -852,40 +919,49 @@ export default function DealsView({
               <span>All Cycles</span>
             </button>
           </div>
-
-          {/* Status Toggle (All, Active, Closed/Completed, Lost) */}
-          <div className="flex items-center gap-1.5 overflow-x-auto">
-            {[
-              { id: 'all', label: 'All Deals' },
-              { id: 'active', label: `Pending Active (${activeCount})` },
-              { id: 'completed', label: `Closed & Paid (${closedCount})` },
-              { id: 'lost', label: `Lost / Bad Debt ${lostCount > 0 ? `(${lostCount})` : ''}`, isDanger: true },
-            ].map((s) => (
-              <button
-                key={s.id}
-                onClick={() => setStatusFilter(s.id)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-colors ${
-                  statusFilter === s.id
-                    ? s.isDanger
-                      ? 'bg-rose-600 text-white shadow-2xs'
-                      : 'bg-indigo-600 text-white shadow-2xs'
-                    : s.isDanger && lostCount > 0
-                    ? 'bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-900 border border-rose-200 dark:border-rose-800'
-                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white'
-                }`}
-              >
-                {s.label}
-              </button>
-            ))}
-          </div>
         </div>
 
+        {/* Horizontally Scrollable Status Chips (Zero Clipping on Mobile) */}
+        <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-0.5 -mx-1 px-1">
+          {[
+            { id: 'all', label: 'All Deals', count: deals.length },
+            { id: 'active', label: 'Pending Active', count: activeCount },
+            { id: 'completed', label: 'Closed & Paid', count: closedCount },
+            { id: 'lost', label: 'Lost / Bad Debt', count: lostCount, isDanger: true },
+          ].map((s) => (
+            <button
+              key={s.id}
+              onClick={() => setStatusFilter(s.id)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all shrink-0 ${
+                statusFilter === s.id
+                  ? s.isDanger
+                    ? 'bg-rose-600 text-white shadow-xs'
+                    : 'bg-indigo-600 text-white shadow-xs'
+                  : s.isDanger && s.count > 0
+                  ? 'bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-900 border border-rose-200 dark:border-rose-800'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <span>{s.label}</span>
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
+                statusFilter === s.id
+                  ? 'bg-white/20 text-white'
+                  : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200'
+              }`}>
+                {s.count}
+              </span>
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Deals Cards List */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 sm:gap-4">
         {loading ? (
-          <div className="col-span-full py-12 text-center text-slate-400 font-medium">Loading client deals...</div>
+          <div className="col-span-full py-16 flex flex-col items-center justify-center gap-3 text-slate-500">
+            <div className="w-7 h-7 border-3 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+            <p className="text-xs font-semibold">Loading client deals & receivables...</p>
+          </div>
         ) : deals.length === 0 ? (
           <div className="col-span-full py-16 text-center text-slate-400 dark:text-slate-500 font-medium">
             {statusFilter === 'lost' 
@@ -916,7 +992,7 @@ export default function DealsView({
             return (
               <div 
                 key={deal.id}
-                className={`rounded-2xl p-5 flex flex-col justify-between border shadow-2xs transition-all ${
+                className={`rounded-2xl p-4 sm:p-5 flex flex-col justify-between border shadow-2xs transition-all ${
                   isLost
                     ? 'bg-rose-50/40 dark:bg-rose-950/20 border-rose-200 dark:border-rose-900/60'
                     : isClosed
@@ -925,68 +1001,90 @@ export default function DealsView({
                 }`}
               >
                 <div>
-                  {/* Top Bar: Client & Status Badge */}
-                  <div className="flex items-start justify-between gap-3 mb-3">
-                    <div>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <h3 className="text-base font-black text-slate-900 dark:text-white">{deal.client_name}</h3>
-                        {deal.company_name && (
-                          <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold border border-slate-200 dark:border-slate-700">
-                            {deal.company_name}
-                          </span>
-                        )}
-
-                        {/* Renewal Number / Cycle Badge */}
-                        {deal.renewal_number > 0 ? (
-                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 font-extrabold border border-indigo-200 dark:border-indigo-800 flex items-center gap-1">
-                            <RotateCcw className="w-3 h-3 text-indigo-600 dark:text-indigo-400" />
-                            Renewal #{deal.renewal_number} (Cycle {deal.renewal_number + 1})
-                          </span>
-                        ) : deal.client_total_cycles > 1 ? (
-                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold border border-slate-200 dark:border-slate-700 flex items-center gap-1">
-                            🌱 Initial Cycle
-                          </span>
-                        ) : null}
-
-                        {deal.renewal_status === 'renewed' && (
-                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 font-bold border border-emerald-200 dark:border-emerald-800 flex items-center gap-1">
-                            <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                            Renewed
-                          </span>
-                        )}
+                  {/* Top Bar: Client Avatar, Name & Status Badges */}
+                  <div className="flex items-start justify-between gap-2.5 mb-3">
+                    <div className="flex items-start gap-2.5 min-w-0">
+                      <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center font-black text-xs sm:text-sm shrink-0 ${
+                        isLost
+                          ? 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
+                          : isClosed
+                          ? 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                          : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300'
+                      }`}>
+                        {deal.client_name?.charAt(0)?.toUpperCase() || 'C'}
                       </div>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 flex items-center gap-2">
-                        <Calendar className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500" />
-                        <span>Date: {formatDate(deal.deal_date)}</span>
-                        {deal.client_phone && (
-                          <>
-                            <span>•</span>
-                            <span className="flex items-center gap-1 font-mono text-slate-600 dark:text-slate-400">
-                              <Phone className="w-3 h-3 text-slate-400" /> {deal.client_phone}
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <h3 className="text-sm sm:text-base font-black text-slate-900 dark:text-white truncate">
+                            {deal.client_name}
+                          </h3>
+                          {deal.company_name && (
+                            <span className="text-[10px] sm:text-xs px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold border border-slate-200 dark:border-slate-700 truncate max-w-[140px]">
+                              {deal.company_name}
                             </span>
-                          </>
-                        )}
-                        {deal.insta_id && (
-                          <>
-                            <span>•</span>
-                            <a
-                              href={getInstaUrl(deal.insta_id)}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              onClick={(e) => e.stopPropagation()}
-                              className="inline-flex items-center gap-1 text-pink-600 dark:text-pink-400 hover:text-pink-700 dark:hover:text-pink-300 hover:underline text-xs font-semibold"
-                              title="Open Instagram Profile"
-                            >
-                              <AtSign className="w-3.5 h-3.5 text-pink-500 shrink-0" />
-                              <span>{deal.insta_id.startsWith('@') || deal.insta_id.includes('/') ? deal.insta_id : `@${deal.insta_id}`}</span>
-                            </a>
-                          </>
-                        )}
-                      </p>
+                          )}
+
+                          {/* Renewal Number / Cycle Badge */}
+                          {deal.renewal_number > 0 ? (
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 font-extrabold border border-indigo-200 dark:border-indigo-800 flex items-center gap-1">
+                              <RotateCcw className="w-3 h-3 text-indigo-600 dark:text-indigo-400" />
+                              Cycle {deal.renewal_number + 1}
+                            </span>
+                          ) : deal.client_total_cycles > 1 ? (
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold border border-slate-200 dark:border-slate-700 flex items-center gap-1">
+                              🌱 Initial
+                            </span>
+                          ) : null}
+
+                          {deal.renewal_status === 'renewed' && (
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 font-bold border border-emerald-200 dark:border-emerald-800 flex items-center gap-1">
+                              <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                              Renewed
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Contact & Date Details */}
+                        <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 flex items-center gap-2 flex-wrap">
+                          <span className="flex items-center gap-1">
+                            <Calendar className="w-3 h-3 text-slate-400" />
+                            <span>{formatDate(deal.deal_date)}</span>
+                          </span>
+                          {deal.client_phone && (
+                            <>
+                              <span>•</span>
+                              <a
+                                href={`tel:${deal.client_phone}`}
+                                className="flex items-center gap-1 font-mono text-slate-600 dark:text-slate-400 hover:text-indigo-600"
+                              >
+                                <Phone className="w-3 h-3 text-slate-400" />
+                                <span>{deal.client_phone}</span>
+                              </a>
+                            </>
+                          )}
+                          {deal.insta_id && (
+                            <>
+                              <span>•</span>
+                              <a
+                                href={getInstaUrl(deal.insta_id)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className="inline-flex items-center gap-1 text-pink-600 dark:text-pink-400 hover:underline font-semibold"
+                                title="Open Instagram Profile"
+                              >
+                                <AtSign className="w-3 h-3 text-pink-500 shrink-0" />
+                                <span>{deal.insta_id.startsWith('@') || deal.insta_id.includes('/') ? deal.insta_id : `@${deal.insta_id}`}</span>
+                              </a>
+                            </>
+                          )}
+                        </div>
+                      </div>
                     </div>
 
-                    <div className="flex flex-col items-end gap-1">
-                      <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold shrink-0 flex items-center gap-1 ${
+                    {/* Status Pill & Duration Badges */}
+                    <div className="flex flex-col items-end gap-1 shrink-0">
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-bold shrink-0 flex items-center gap-1 ${
                         isLost
                           ? 'bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-300 border border-rose-300 dark:border-rose-800'
                           : isClosed && isPaidInFull
@@ -997,55 +1095,55 @@ export default function DealsView({
                       }`}>
                         {isLost ? (
                           <>
-                            <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
-                            <span>Lost / Bad Debt</span>
+                            <AlertTriangle className="w-3 h-3 text-rose-600" />
+                            <span>Lost</span>
                           </>
                         ) : isClosed && isPaidInFull ? (
                           <>
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                            <span>Closed & Fully Paid</span>
+                            <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                            <span>Fully Paid</span>
                           </>
                         ) : isClosed ? (
                           <>
-                            <Lock className="w-3.5 h-3.5 text-slate-500" />
-                            <span>Closed Contract</span>
+                            <Lock className="w-3 h-3 text-slate-500" />
+                            <span>Closed</span>
                           </>
                         ) : (
                           <>
-                            <Clock className="w-3.5 h-3.5 text-amber-600" />
-                            <span>Active Retainer</span>
+                            <Clock className="w-3 h-3 text-amber-600" />
+                            <span>Active</span>
                           </>
                         )}
                       </span>
 
                       {/* Contract Duration & Expiry Status */}
-                        <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded border ${
-                          isExpiredPlan
-                            ? 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800'
-                            : isExpiringSoon
-                            ? 'bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-950 dark:text-rose-300 dark:border-rose-800 animate-pulse'
-                            : 'bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800'
-                        }`}>
-                          {deal.services && deal.services.some(s => {
-                            const name = (s.service_name || s.name || '').toLowerCase();
-                            return name.includes('video shoot') || name.includes('reel');
-                          })
-                            ? `${durMonths} ${durMonths === 1 ? 'Reel' : 'Reels'}`
-                            : `${durMonths} Mo`} ({daysRemaining > 0 ? `${daysRemaining}d left` : `Expired ${Math.abs(daysRemaining)}d ago`})
-                        </span>
+                      <span className={`text-[9px] sm:text-[10px] font-extrabold px-1.5 py-0.5 rounded border ${
+                        isExpiredPlan
+                          ? 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800'
+                          : isExpiringSoon
+                          ? 'bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-950 dark:text-rose-300 dark:border-rose-800 animate-pulse'
+                          : 'bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800'
+                      }`}>
+                        {durMonths} Mo • {daysRemaining > 0 ? `${daysRemaining}d left` : `Expired ${Math.abs(daysRemaining)}d ago`}
+                      </span>
                     </div>
                   </div>
 
                   {/* Services Availed Badges */}
-                  <div className="flex flex-wrap gap-1.5 mb-4">
+                  <div className="flex flex-wrap gap-1 mb-3">
                     {deal.services && deal.services.length > 0 ? (
                       deal.services.map((s, idx) => (
                         <span 
                           key={idx}
-                          className="px-2 py-0.5 text-[11px] font-semibold bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-800/80 rounded-lg flex items-center gap-1"
+                          className="px-2 py-0.5 text-[10px] sm:text-[11px] font-semibold bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-800/80 rounded-lg flex items-center gap-1"
                         >
-                          <Sparkles className="w-3 h-3 text-indigo-500" />
-                          {s.service_name} {s.quantity > 1 && <span className="font-extrabold text-indigo-900 dark:text-indigo-100 bg-indigo-200/60 dark:bg-indigo-800/60 px-1 rounded text-[10px]">x{s.quantity}</span>}
+                          <Sparkles className="w-2.5 h-2.5 text-indigo-500" />
+                          <span>{s.service_name}</span>
+                          {s.quantity > 1 && (
+                            <span className="font-extrabold text-indigo-900 dark:text-indigo-100 bg-indigo-200/60 dark:bg-indigo-800/60 px-1 rounded text-[9px]">
+                              x{s.quantity}
+                            </span>
+                          )}
                         </span>
                       ))
                     ) : (
@@ -1054,30 +1152,30 @@ export default function DealsView({
                   </div>
 
                   {/* Financial Breakdown Progress Box */}
-                  <div className="bg-slate-50 dark:bg-slate-800/80 rounded-xl p-3.5 border border-slate-200/80 dark:border-slate-700/60 mb-3 space-y-2">
+                  <div className="bg-slate-50 dark:bg-slate-800/80 rounded-xl p-3 border border-slate-200/80 dark:border-slate-700/60 mb-3 space-y-2">
                     <div className="flex items-center justify-between text-xs">
                       <div>
-                        <span className="text-slate-500 dark:text-slate-400 font-medium">Deal Value:</span>
-                        <div className="text-sm font-black text-slate-900 dark:text-white">{formatCurrency(deal.total_deal_amount)}</div>
+                        <span className="text-slate-500 dark:text-slate-400 font-medium text-[10px] uppercase block">Deal Value</span>
+                        <div className="text-xs sm:text-sm font-black text-slate-900 dark:text-white">{formatCurrency(deal.total_deal_amount)}</div>
                       </div>
                       <div>
-                        <span className="text-slate-500 dark:text-slate-400 font-medium">Received:</span>
-                        <div className="text-sm font-black text-emerald-600 dark:text-emerald-400">{formatCurrency(deal.received_amount)}</div>
+                        <span className="text-slate-500 dark:text-slate-400 font-medium text-[10px] uppercase block">Received</span>
+                        <div className="text-xs sm:text-sm font-black text-emerald-600 dark:text-emerald-400">{formatCurrency(deal.received_amount)}</div>
                       </div>
                       <div className="text-right">
-                        <span className="text-slate-500 dark:text-slate-400 font-medium">
-                          {isLost ? 'Lost Amount:' : isClosed ? 'Final Balance:' : 'Pending:'}
+                        <span className="text-slate-500 dark:text-slate-400 font-medium text-[10px] uppercase block">
+                          {isLost ? 'Lost Amount' : isClosed ? 'Final Balance' : 'Pending'}
                         </span>
-                        <div className={`text-sm font-black ${isLost ? 'text-rose-600 dark:text-rose-400' : isClosed && isPaidInFull ? 'text-slate-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                        <div className={`text-xs sm:text-sm font-black ${isLost ? 'text-rose-600 dark:text-rose-400' : isClosed && isPaidInFull ? 'text-slate-400' : 'text-amber-600 dark:text-amber-400'}`}>
                           {formatCurrency(deal.pending_amount)}
                         </div>
                       </div>
                     </div>
 
                     {/* Progress Bar */}
-                    <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2 overflow-hidden">
+                    <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-1.5 overflow-hidden">
                       <div 
-                        className={`h-2 rounded-full transition-all duration-500 ${
+                        className={`h-1.5 rounded-full transition-all duration-500 ${
                           isLost 
                             ? 'bg-rose-500' 
                             : isPaidInFull 
@@ -1091,7 +1189,7 @@ export default function DealsView({
 
                   {/* Notes / Loss Remarks */}
                   {deal.notes && (
-                    <p className={`text-xs p-2.5 rounded-lg border mb-3 whitespace-pre-line leading-relaxed ${
+                    <p className={`text-xs p-2.5 rounded-xl border mb-3 whitespace-pre-line leading-relaxed ${
                       isLost 
                         ? 'bg-rose-100/70 dark:bg-rose-950/60 text-rose-900 dark:text-rose-200 border-rose-200 dark:border-rose-900 font-medium'
                         : isClosed
@@ -1103,127 +1201,124 @@ export default function DealsView({
                   )}
                 </div>
 
-                {/* Bottom Actions Bar */}
-                <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-slate-100 dark:border-slate-800 shrink-0">
+                {/* Structured Two-Tier Bottom Actions Bar */}
+                <div className="space-y-2 pt-3 border-t border-slate-100 dark:border-slate-800 shrink-0">
+                  {/* Tier 1: Primary Lifecycle & Financial Actions */}
                   <div className="flex items-center gap-2">
-                    {/* View Client History Button */}
+                    <button
+                      onClick={() => handleOpenPaymentLedger(deal)}
+                      className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-all shadow-xs active:scale-95"
+                    >
+                      <CreditCard className="w-3.5 h-3.5" />
+                      <span>Payments ({deal.payments?.length || 0})</span>
+                    </button>
+
+                    {!isLost && (
+                      <button
+                        onClick={() => handleOpenRenew(deal)}
+                        className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all shadow-xs active:scale-95"
+                        title="Renew services or upgrade contract for next month"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        <span>Renew</span>
+                      </button>
+                    )}
+
                     <button
                       onClick={() => handleOpenClientHistory(deal)}
-                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900 border border-indigo-200 dark:border-indigo-800 text-xs font-bold transition-all shadow-2xs group"
-                      title="View complete client lifecycle, renewal timeline, and upgrade history"
+                      className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900 border border-indigo-200 dark:border-indigo-800 text-xs font-bold transition-all shadow-2xs group shrink-0"
+                      title="View complete client lifecycle and history"
                     >
                       <History className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 group-hover:rotate-[-30deg] transition-transform" />
-                      <span>Client History</span>
+                      <span className="hidden sm:inline">History</span>
                       {deal.client_total_cycles > 1 && (
                         <span className="px-1.5 py-0.2 rounded-full bg-indigo-200 dark:bg-indigo-800 text-indigo-900 dark:text-indigo-100 text-[10px] font-extrabold">
                           {deal.client_total_cycles}
                         </span>
                       )}
                     </button>
-
-                    <div className="hidden sm:flex items-center gap-1 text-slate-400 dark:text-slate-500 text-[11px] font-mono">
-                      <span>•</span>
-                      <span>{deal.payments ? deal.payments.length : 0} pay</span>
-                    </div>
                   </div>
 
-                  <div className="flex flex-wrap items-center justify-end gap-1.5 min-w-0">
-                    
-                    {/* If deal is marked as Lost: Show Restore button */}
-                    {isLost ? (
+                  {/* Tier 2: Documents & Record Actions */}
+                  <div className="flex items-center justify-between gap-1.5 pt-1">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {/* Proposal / Quote */}
                       <button
-                        onClick={() => handleRestoreDeal(deal)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-bold transition-all"
-                        title="Restore this deal back to active receivables"
+                        onClick={() => {
+                          setProposalModalMode('proposal');
+                          setProposalModalDeal(deal);
+                        }}
+                        className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-900/60 border border-purple-200/80 dark:border-purple-800/80 text-[11px] font-bold transition-all shadow-2xs"
+                        title="Generate Proposal & Quote PDF"
                       >
-                        <Undo2 className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-                        Restore Deal
+                        <FileText className="w-3 h-3 text-purple-600 dark:text-purple-400" />
+                        <span>Quote</span>
                       </button>
-                    ) : (
-                      <>
-                        {/* 1-Click Renew Plan Button */}
+
+                      {/* Invoice / Bill */}
+                      <button
+                        onClick={() => {
+                          setProposalModalMode('invoice');
+                          setProposalModalDeal(deal);
+                        }}
+                        className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 hover:bg-teal-100 dark:hover:bg-teal-900/60 border border-teal-200/80 dark:border-teal-800/80 text-[11px] font-bold transition-all shadow-2xs"
+                        title="Generate Official Service Invoice PDF"
+                      >
+                        <Receipt className="w-3 h-3 text-teal-600 dark:text-teal-400" />
+                        <span>Bill</span>
+                      </button>
+
+                      {/* Close Contract (When active) */}
+                      {deal.status === 'active' && (
                         <button
-                          onClick={() => handleOpenRenew(deal)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900 border border-emerald-200 dark:border-emerald-800 text-xs font-bold transition-all shadow-2xs active:scale-95"
-                          title="Renew services or upgrade contract for next month"
+                          onClick={() => handleOpenCloseModal(deal)}
+                          className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-[11px] font-bold transition-all shadow-2xs"
+                          title="Close contract (Client does not renew)"
                         >
-                          <RotateCcw className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                          Renew
+                          <Lock className="w-3 h-3 text-slate-500" />
+                          <span>Close</span>
                         </button>
+                      )}
 
+                      {/* Restore (if lost) */}
+                      {isLost && (
                         <button
-                          onClick={() => handleOpenPaymentLedger(deal)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900 border border-indigo-200 dark:border-indigo-800 text-xs font-bold transition-colors"
+                          onClick={() => handleRestoreDeal(deal)}
+                          className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 text-[11px] font-bold transition-all"
+                          title="Restore this deal back to active receivables"
                         >
-                          <CreditCard className="w-3.5 h-3.5" />
-                          Payments
+                          <Undo2 className="w-3 h-3 text-indigo-600 dark:text-indigo-400" />
+                          <span>Restore</span>
                         </button>
+                      )}
+                    </div>
 
-                        {/* Proposal & Quote Generator */}
+                    <div className="flex items-center gap-1 shrink-0">
+                      {/* Mark as Lost Button (if pending amount exists & active) */}
+                      {deal.pending_amount > 0 && deal.status === 'active' && (
                         <button
-                          onClick={() => {
-                            setProposalModalMode('proposal');
-                            setProposalModalDeal(deal);
-                          }}
-                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-purple-50 dark:bg-purple-950/70 text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-900 border border-purple-200 dark:border-purple-800 text-xs font-bold transition-all shadow-2xs"
-                          title="Generate Gandhi Infosol Proposal & Quote PDF"
+                          onClick={() => handleOpenMarkLost(deal)}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/60 transition-colors"
+                          title="Mark as Lost / Defaulted Bad Debt"
                         >
-                          <FileText className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
-                          Quote
+                          <FileX2 className="w-3.5 h-3.5 text-rose-500" />
                         </button>
-
-                        {/* Invoice & Bill Generator */}
-                        <button
-                          onClick={() => {
-                            setProposalModalMode('invoice');
-                            setProposalModalDeal(deal);
-                          }}
-                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-teal-50 dark:bg-teal-950/70 text-teal-700 dark:text-teal-300 hover:bg-teal-100 dark:hover:bg-teal-900 border border-teal-200 dark:border-teal-800 text-xs font-bold transition-all shadow-2xs"
-                          title="Generate Official Service Invoice & Bill PDF"
-                        >
-                          <Receipt className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
-                          Bill
-                        </button>
-
-                        {/* Close Contract Button (When Active and not renewing) */}
-                        {deal.status === 'active' && (
-                          <button
-                            onClick={() => handleOpenCloseModal(deal)}
-                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-xs font-bold transition-all shadow-2xs"
-                            title="Close contract (Client does not renew membership)"
-                          >
-                            <Lock className="w-3.5 h-3.5 text-slate-500" />
-                            Close
-                          </button>
-                        )}
-
-                        {/* Mark as Lost Button (if pending amount exists) */}
-                        {deal.pending_amount > 0 && deal.status === 'active' && (
-                          <button
-                            onClick={() => handleOpenMarkLost(deal)}
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/60 transition-colors"
-                            title="Mark as Lost / Defaulted Bad Debt"
-                          >
-                            <FileX2 className="w-4 h-4 text-rose-500" />
-                          </button>
-                        )}
-                      </>
-                    )}
-                    
-                    <button
-                      onClick={() => handleOpenEdit(deal)}
-                      className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                      title="Edit Deal"
-                    >
-                      <Edit3 className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => handleDeleteDeal(deal.id)}
-                      className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/60 transition-colors"
-                      title="Delete Deal"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                      )}
+                      <button
+                        onClick={() => handleOpenEdit(deal)}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                        title="Edit Deal"
+                      >
+                        <Edit3 className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteDeal(deal.id)}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/60 transition-colors"
+                        title="Delete Deal"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
                 </div>
 
@@ -2114,10 +2209,10 @@ export default function DealsView({
             
             {/* Deal Overview Card */}
             <div className="bg-slate-50 dark:bg-slate-800/80 rounded-2xl p-4 border border-slate-200 dark:border-slate-700 space-y-3">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
                 <div>
                   <h4 className="text-lg font-black text-slate-900 dark:text-white">{paymentLedgerDeal.client_name}</h4>
-                  <div className="flex items-center gap-2 mt-0.5">
+                  <div className="flex flex-wrap items-center gap-2 mt-0.5">
                     <p className="text-xs text-slate-500 dark:text-slate-400">{paymentLedgerDeal.company_name || 'Client Deal'}</p>
                     {paymentLedgerDeal.insta_id && (
                       <a
@@ -2133,7 +2228,7 @@ export default function DealsView({
                     )}
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-1.5">
                   <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
                     paymentLedgerDeal.status === 'lost'
                       ? 'bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-300 border border-rose-300 dark:border-rose-800'

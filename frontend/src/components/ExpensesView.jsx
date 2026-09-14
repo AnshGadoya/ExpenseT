@@ -170,83 +170,145 @@ export default function ExpensesView({
     }
   };
 
+  const handleSetQuickPreset = (preset) => {
+    const now = new Date();
+    const toISO = (d) => {
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+
+    if (preset === 'today') {
+      const today = toISO(now);
+      setStartDate(today);
+      setEndDate(today);
+    } else if (preset === 'this_month') {
+      const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+      const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      setStartDate(toISO(firstDay));
+      setEndDate(toISO(lastDay));
+    } else if (preset === 'all') {
+      setStartDate('');
+      setEndDate('');
+    }
+  };
+
+  const isTodayActive = startDate && endDate && startDate === endDate && startDate === getTodayDateString();
+  const isAllActive = !startDate && !endDate;
+
   const totalFilteredExpense = expenses.reduce((sum, e) => sum + Number(e.amount), 0);
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+    <div className="space-y-4 sm:space-y-6 max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6">
       
       {/* Header Bar */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
         <div>
-          <h2 className="text-2xl font-black text-slate-900 dark:text-white flex items-center gap-2">
-            <Receipt className="w-7 h-7 text-rose-600 dark:text-rose-400" />
-            Daily Business Expenses
+          <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white flex items-center gap-2">
+            <Receipt className="w-6 h-6 sm:w-7 sm:h-7 text-rose-600 dark:text-rose-400 shrink-0" />
+            <span>Daily Business Expenses</span>
           </h2>
-          <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
-            Track day-to-day agency costs (Food, Travel, Salesman Pitch, Rent, Fuel, Party, Subscriptions, Crew)
+          <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5">
+            Track operational spending across Food, Commute, Rent, Subscriptions & Crew
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2 sm:gap-2.5 w-full sm:w-auto">
           <button
             onClick={handleExport}
-            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 text-xs font-bold border border-slate-200 dark:border-slate-800 shadow-2xs transition-colors"
+            className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 py-2 rounded-xl bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 text-xs font-bold border border-slate-200 dark:border-slate-800 shadow-2xs transition-colors"
           >
-            <Download className="w-4 h-4 text-slate-500 dark:text-slate-400" />
-            Export Excel/CSV
+            <Download className="w-4 h-4 text-slate-500 dark:text-slate-400 shrink-0" />
+            <span>Export</span>
           </button>
           <button
             onClick={handleOpenAdd}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-rose-600 text-white hover:bg-rose-700 dark:bg-rose-600 dark:hover:bg-rose-500 text-xs sm:text-sm font-bold transition-all shadow-sm shadow-rose-600/20 active:scale-95"
+            className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 sm:gap-2 px-3.5 sm:px-4 py-2 rounded-xl bg-rose-600 text-white hover:bg-rose-700 dark:bg-rose-600 dark:hover:bg-rose-500 text-xs sm:text-sm font-bold transition-all shadow-sm shadow-rose-600/20 active:scale-95"
           >
-            <Plus className="w-4 h-4" />
-            + Log Expense
+            <Plus className="w-4 h-4 shrink-0" />
+            <span>+ Log Expense</span>
           </button>
         </div>
       </div>
 
       {/* Filter & Summary Card */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-2xs space-y-4 transition-colors">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 sm:p-5 border border-slate-200/90 dark:border-slate-800 shadow-2xs space-y-4 transition-colors">
         
-        {/* Top Filter Stats */}
-        <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-slate-100 dark:border-slate-800">
-          <div className="flex items-center gap-6">
+        {/* Top Filter Stats & Quick Preset Buttons */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100 dark:border-slate-800">
+          <div className="flex items-center gap-4 sm:gap-6">
             <div>
-              <span className="text-xs text-slate-500 dark:text-slate-400 font-semibold">Filtered Total Spending</span>
-              <div className="text-2xl font-black text-rose-600 dark:text-rose-400">{formatCurrency(totalFilteredExpense)}</div>
+              <span className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 font-semibold">Filtered Spending</span>
+              <div className="text-xl sm:text-2xl font-black text-rose-600 dark:text-rose-400">{formatCurrency(totalFilteredExpense)}</div>
             </div>
             <div className="h-8 w-px bg-slate-200 dark:bg-slate-800" />
             <div>
-              <span className="text-xs text-slate-500 dark:text-slate-400 font-semibold">Total Entries</span>
-              <div className="text-2xl font-bold text-slate-900 dark:text-white">{expenses.length}</div>
+              <span className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 font-semibold">Total Entries</span>
+              <div className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white">{expenses.length}</div>
             </div>
           </div>
 
-          {(search || selectedCategory || selectedMode || startDate || endDate) && (
+          {/* Quick Date Presets */}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-[11px] text-slate-400 dark:text-slate-500 font-medium mr-1 hidden sm:inline">Quick range:</span>
             <button
-              onClick={() => {
-                setSearch('');
-                setSelectedCategory('');
-                setSelectedMode('');
-                setStartDate('');
-                setEndDate('');
-              }}
-              className="text-xs font-bold text-rose-600 dark:text-rose-400 hover:text-rose-700 dark:hover:text-rose-300 underline"
+              onClick={() => handleSetQuickPreset('today')}
+              className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-all ${
+                isTodayActive 
+                  ? 'bg-rose-600 text-white shadow-2xs' 
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+              }`}
             >
-              Clear All Filters
+              Today
             </button>
-          )}
+            <button
+              onClick={() => handleSetQuickPreset('this_month')}
+              className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-all ${
+                !isTodayActive && startDate && endDate 
+                  ? 'bg-rose-600 text-white shadow-2xs' 
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+              }`}
+            >
+              This Month
+            </button>
+            <button
+              onClick={() => handleSetQuickPreset('all')}
+              className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-all ${
+                isAllActive 
+                  ? 'bg-rose-600 text-white shadow-2xs' 
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+              }`}
+            >
+              All Time
+            </button>
+
+            {(search || selectedCategory || selectedMode || startDate || endDate) && (
+              <button
+                onClick={() => {
+                  setSearch('');
+                  setSelectedCategory('');
+                  setSelectedMode('');
+                  setStartDate('');
+                  setEndDate('');
+                }}
+                className="text-xs font-bold text-rose-600 dark:text-rose-400 hover:underline ml-1"
+              >
+                Clear
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Filters Controls Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-2.5 sm:gap-3">
           
           {/* Search Box */}
           <div className="relative md:col-span-2">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
             <input
               type="text"
-              placeholder="Search description, vendor, receipt..."
+              placeholder="Search description, vendor, bill ref..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl pl-9 pr-3 py-2 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-rose-500 focus:bg-white dark:focus:bg-slate-900"
@@ -284,14 +346,22 @@ export default function ExpensesView({
             </select>
           </div>
 
-          {/* Date Picker Start */}
-          <div>
+          {/* Date Picker Range (From & To in 1 column or responsive) */}
+          <div className="flex items-center gap-1.5">
             <input
               type="date"
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
-              placeholder="From Date"
-              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:border-rose-500 focus:bg-white dark:focus:bg-slate-900 font-medium"
+              title="From Date"
+              className="w-1/2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-2 py-2 text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:border-rose-500 font-medium"
+            />
+            <span className="text-slate-400 text-xs">-</span>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              title="To Date"
+              className="w-1/2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-2 py-2 text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:border-rose-500 font-medium"
             />
           </div>
 
@@ -299,8 +369,100 @@ export default function ExpensesView({
 
       </div>
 
-      {/* Expenses Table */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-2xs transition-colors">
+      {/* MOBILE EXPENSE CARDS FEED (Screen < 768px) */}
+      <div className="block md:hidden space-y-3">
+        {loading ? (
+          <div className="bg-white dark:bg-slate-900 rounded-2xl p-8 text-center text-slate-400 text-xs border border-slate-200 dark:border-slate-800">
+            <div className="w-6 h-6 border-2 border-rose-600 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+            Loading expenses...
+          </div>
+        ) : (!Array.isArray(expenses) || expenses.length === 0) ? (
+          <div className="bg-white dark:bg-slate-900 rounded-2xl p-8 text-center text-slate-400 dark:text-slate-500 text-xs border border-slate-200 dark:border-slate-800">
+            No expense records found matching your filters.
+          </div>
+        ) : (
+          expenses.map((exp) => (
+            <div 
+              key={`m-${exp.id}`}
+              className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200/90 dark:border-slate-800 shadow-2xs space-y-2.5 transition-all"
+            >
+              {/* Card Header: Category badge & Date */}
+              <div className="flex items-center justify-between gap-2">
+                <span
+                  className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold"
+                  style={{
+                    backgroundColor: `${exp.category_color}18`,
+                    color: exp.category_color,
+                    border: `1px solid ${exp.category_color}35`,
+                  }}
+                >
+                  <span 
+                    className="w-1.5 h-1.5 rounded-full" 
+                    style={{ backgroundColor: exp.category_color }} 
+                  />
+                  {exp.category_name}
+                </span>
+                <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  {formatDate(exp.expense_date)}
+                </span>
+              </div>
+
+              {/* Description & Receipt */}
+              <div>
+                <p className="text-sm font-bold text-slate-900 dark:text-white leading-snug">
+                  {exp.description}
+                </p>
+                {exp.receipt_no && (
+                  <p className="text-[11px] text-slate-400 dark:text-slate-500 font-mono mt-0.5">
+                    Ref: #{exp.receipt_no}
+                  </p>
+                )}
+              </div>
+
+              {/* Vendor & Details */}
+              {exp.paid_to && (
+                <div className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400">
+                  <span className="font-semibold text-slate-500">Paid to:</span>
+                  <span className="font-bold text-slate-800 dark:text-slate-200">{exp.paid_to}</span>
+                </div>
+              )}
+
+              {/* Bottom Row: Payment mode, Amount, Actions */}
+              <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
+                <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-[11px] font-mono text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                  {exp.payment_mode}
+                </span>
+
+                <div className="flex items-center gap-3">
+                  <div className="text-base font-black text-rose-600 dark:text-rose-400">
+                    {formatCurrency(exp.amount)}
+                  </div>
+
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => handleOpenEdit(exp)}
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 transition-colors"
+                      title="Edit"
+                    >
+                      <Edit3 className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => handleDeleteExpense(exp.id)}
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/60 transition-colors"
+                      title="Delete"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* DESKTOP EXPENSES TABLE (Screen >= 768px) */}
+      <div className="hidden md:block bg-white dark:bg-slate-900 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-2xs transition-colors">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
@@ -393,6 +555,7 @@ export default function ExpensesView({
           </table>
         </div>
       </div>
+
 
       {/* Add / Edit Expense Modal */}
       <Modal

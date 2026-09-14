@@ -7,6 +7,7 @@ const userSchema = new mongoose.Schema({
   role: { type: String, default: 'admin' },
   twoFactorSecret: { type: String, default: '' },
   twoFactorEnabled: { type: Boolean, default: false },
+  filterPin: { type: String, default: '' },
   created_at: { type: Date, default: Date.now }
 }, {
   toJSON: {
@@ -15,6 +16,7 @@ const userSchema = new mongoose.Schema({
       ret.id = ret._id.toString();
       delete ret.password;
       delete ret.twoFactorSecret;
+      delete ret.filterPin;
       delete ret.__v;
       return ret;
     }

@@ -31,6 +31,9 @@ export const api = {
   verify2FA: (data) => fetchAPI('/auth/verify-2fa', { method: 'POST', body: JSON.stringify(data) }),
   register: (userData) => fetchAPI('/auth/register', { method: 'POST', body: JSON.stringify(userData) }),
   getMe: () => fetchAPI('/auth/me'),
+  getPinStatus: () => fetchAPI('/auth/pin-status'),
+  verifyPin: (pin) => fetchAPI('/auth/verify-pin', { method: 'POST', body: JSON.stringify({ pin }) }),
+  setPin: (data) => fetchAPI('/auth/set-pin', { method: 'POST', body: JSON.stringify(data) }),
 
   // Services
   getServices: () => fetchAPI('/services'),

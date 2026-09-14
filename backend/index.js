@@ -248,6 +248,83 @@ app.get('/api/auth/me', authenticateToken, async (req, res) => {
   }
 });
 
+// GET /api/auth/pin-status - Check if current user has a 4-digit PIN configured
+app.get('/api/auth/pin-status', authenticateToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    res.json({ hasPin: Boolean(user.filterPin && user.filterPin.length > 0) });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/auth/verify-pin - Validate 4-digit PIN
+app.post('/api/auth/verify-pin', authenticateToken, async (req, res) => {
+  try {
+    const { pin } = req.body;
+    if (!pin || !/^\d{4}$/.test(pin.toString())) {
+      return res.status(400).json({ error: 'PIN must be exactly 4 digits' });
+    }
+
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    if (!user.filterPin) {
+      return res.status(400).json({ error: 'No PIN is set. Please create a PIN first.' });
+    }
+
+    const isMatch = await bcrypt.compare(pin.toString(), user.filterPin);
+    if (!isMatch) {
+      return res.status(401).json({ error: 'Incorrect 4-digit PIN' });
+    }
+
+    res.json({ success: true, message: 'PIN verified successfully' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/auth/set-pin - Create or update 4-digit PIN with user password authentication
+app.post('/api/auth/set-pin', authenticateToken, async (req, res) => {
+  try {
+    const { pin, password } = req.body;
+
+    if (!password) {
+      return res.status(400).json({ error: 'Account password is required for authentication' });
+    }
+
+    if (!pin || !/^\d{4}$/.test(pin.toString())) {
+      return res.status(400).json({ error: 'PIN must be exactly 4 numeric digits' });
+    }
+
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Verify account password
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    if (!isPasswordValid) {
+      return res.status(401).json({ error: 'Incorrect account password. Authentication failed.' });
+    }
+
+    // Hash and store the 4-digit PIN
+    const hashedPin = await bcrypt.hash(pin.toString(), 10);
+    user.filterPin = hashedPin;
+    await user.save();
+
+    res.json({ success: true, message: '4-digit PIN updated successfully' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
 // ==========================================
 // 1. SERVICES MASTER APIS
 // ==========================================
